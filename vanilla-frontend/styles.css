@@ -228,3 +228,48 @@ body {
     border-bottom: 2px solid #000;
   }
 }
+
+/* Add these to your existing CSS */
+.room {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.room:hover {
+  background-color: #f0f0f0;
+}
+
+.room p {
+  margin: 0;
+  font-size: 16px;
+}
+
+.active-room {
+  background-color: #e6f2ff;
+  font-weight: bold;
+}
+
+.joined-room p::after {
+  content: " ✓";
+  color: #2ecc71;
+}
+
+.room-action-btn {
+  padding: 6px 12px;
+  margin-left: 5px;
+  border: 2px solid #000;
+  border-radius: 10px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.room-action-btn:hover {
+  background-color: #f0f0f0;
+}

@@ -30,8 +30,7 @@ export class AuthService {
     const newUser = { ...createUserDto, password: hashedPassword };
 
     const user = await this.usersService.create(newUser);
-    const payload = { sub: user.id, username: user.username };
-
+    const payload = this.generatePayload(user);
     return {
       accessToken: await this.jwtService.signAsync(payload),
     };
@@ -73,14 +72,17 @@ export class AuthService {
     return this.validateUserAndGenerateToken(user, pass);
   }
 
+  private generatePayload(user) {
+    return { sub: user.id, username: user.username, id: user.id };
+  }
+
   private async validateUserAndGenerateToken(user: any, pass: string) {
     const isPasswordValid = await bcrypt.compare(pass, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = { sub: user.id, username: user.username };
-
+    const payload = this.generatePayload(user);
     return {
       accessToken: await this.jwtService.signAsync(payload),
     };

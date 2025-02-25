@@ -49,7 +49,22 @@
     </div>
 
     <div id="chat-room">
-      <h3>Chat Room</h3>
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        "
+      >
+        <h3 id="current-room-name">General</h3>
+
+        <div>
+          <button id="join-room-btn" class="room-action-btn">Join room</button>
+          <button id="leave-room-btn" class="room-action-btn">
+            Leave room
+          </button>
+        </div>
+      </div>
       <div style="display: flex">
         <div id="users-space">
           <p>Users</p>
@@ -71,8 +86,9 @@
         <button type="submit">send</button>
       </form>
     </div>
-
     <script type="module">
+      // Replace the existing JavaScript code in your HTML file with this updated version
+
       import { io } from "socket.io-client";
 
       const apiBaseURL = "http://localhost:3500";
@@ -84,11 +100,17 @@
       const authStatusBox = $("#auth-status-box");
       const logoutButton = $("#logout-button");
       const chatArea = $("#chat-area");
+      const currentRoomName = $("#current-room-name");
+      const joinRoomBtn = $("#join-room-btn");
+      const leaveRoomBtn = $("#leave-room-btn");
 
       let isAuth = false;
       let appReady = false;
       let allUsers = [];
-      let userDetails = { username: "" };
+      let allRooms = [];
+      let userDetails = { username: "", userId: null };
+      let currentRoomId = null;
+      let userRooms = []; // Track rooms the user has joined
 
       const socket = io("http://localhost:3500/", {
         reconnectionDelayMax: 10000,
@@ -96,13 +118,14 @@
       });
 
       socket.on("connect", () => {
-        statusIndicatorBox.innerText + "connected!";
+        statusIndicatorBox.innerText = "connected!";
         console.log("connected");
       });
 
       socket.on("onlineUsersUpdate", (onlineUsers) => {
         setTimeout(() => {
           console.log({ onlineUsers });
+          // Only show online users
           const onlineUsersUsernames = onlineUsers.map((user) => user.username);
           const users = allUsers.map((user) => ({
             ...user,
@@ -112,12 +135,26 @@
         }, 1000);
       });
 
+      socket.on("error", (error) => {
+        console.error("Socket error:", error.message);
+        // Display error message to user
+        const errorElement = document.createElement("div");
+        errorElement.className = "error-message";
+        errorElement.textContent = error.message;
+        chatArea.appendChild(errorElement);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          errorElement.remove();
+        }, 5000);
+      });
+
       setInterval(() => {
         socket.emit("heartbeat");
       }, 30 * 1000);
 
       socket.on("connect_error", (err) => {
-        statusIndicatorBox.innerText + "disconnected";
+        statusIndicatorBox.innerText = "disconnected";
         console.error("Connection failed:", err.message);
       });
 
@@ -125,34 +162,78 @@
         const isCurrentUser = data.username === userDetails.username;
 
         return `
-              <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
-                <p class="chat-bubble-username">~${data.username}</p>
-                <div class="chat-bubble-chatdata">
-                  <p class="chat-bubble-message">${data.message}</p>
-                  <p class="chat-bubble-timestamp">${convertToLocalTime(
-                    data.timestamp
-                  )}</p>
-                </div>
-              </div>
-            `;
+    <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
+      <p class="chat-bubble-username">~${data.username}</p>
+      <div class="chat-bubble-chatdata">
+        <p class="chat-bubble-message">${data.message}</p>
+        <p class="chat-bubble-timestamp">${convertToLocalTime(
+          data.timestamp
+        )}</p>
+      </div>
+    </div>
+  `;
       }
 
       socket.on("roomPreviousMessages", (messages) => {
         chatArea.innerHTML = "";
-        messages.forEach((msg) => {
-          chatArea.innerHTML += renderChatBubble(msg);
-        });
+        if (messages.length === 0) {
+          // If we got an empty array, it could mean:
+          // 1. The room is empty
+          // 2. The user doesn't have access to this room
+          const isJoined = userRooms.some((room) => room.id === currentRoomId);
+
+          if (!isJoined) {
+            chatArea.innerHTML = `<div class="info-message">You need to join this room to see messages.</div>`;
+          } else {
+            chatArea.innerHTML = `<div class="info-message">No messages in this room yet.</div>`;
+          }
+        } else {
+          messages.forEach((msg) => {
+            chatArea.innerHTML += renderChatBubble(msg);
+          });
+        }
         scrollToBottom();
       });
 
       socket.on("roomMessageBroadcast", (msg) => {
-        chatArea.innerHTML += renderChatBubble(msg);
-        scrollToBottom();
+        // Only show messages for the current room
+        if (msg.roomId === currentRoomId) {
+          chatArea.innerHTML += renderChatBubble(msg);
+          scrollToBottom();
+        }
+      });
+
+      socket.on("userJoinedRoom", (data) => {
+        console.log(`${data.username} joined room ${data.roomId}`);
+        // Add system message for user joining
+        if (data.roomId === currentRoomId) {
+          const joinMessage = `
+      <div class="system-message">
+        <p>${data.username} joined the room</p>
+      </div>
+    `;
+          chatArea.innerHTML += joinMessage;
+          scrollToBottom();
+        }
       });
 
       socket.on("disconnect", () => {
-        statusIndicatorBox.innerText + "disconnected";
+        statusIndicatorBox.innerText = "disconnected";
         console.log("Disconnected from server.");
+      });
+
+      socket.on("userLeftRoom", (data) => {
+        console.log(`${data.username} left room ${data.roomId}`);
+        // Add system message for user leaving
+        if (data.roomId === currentRoomId) {
+          const leaveMessage = `
+      <div class="system-message">
+        <p>${data.username} left the room</p>
+      </div>
+    `;
+          chatArea.innerHTML += leaveMessage;
+          scrollToBottom();
+        }
       });
 
       /**
@@ -198,43 +279,244 @@
           }
 
           $("#users").innerHTML += `
-                  <div class="user">
-                    <span class="${baseClass}"></span><p>${user.username}</p>
-                  </div>
-                  `;
+      <div class="user">
+        <span class="${baseClass}"></span><p>${user.username}</p>
+      </div>
+    `;
         });
+      }
+
+      function renderRooms(rooms) {
+        $("#rooms").innerHTML = "";
+        rooms.forEach((room) => {
+          const isJoined = userRooms.some((r) => r.id === room.id);
+          const isActive = currentRoomId === room.id;
+
+          $("#rooms").innerHTML += `
+      <div class="room ${isActive ? "active-room" : ""} ${
+            isJoined ? "joined-room" : ""
+          }" 
+         data-room-id="${room.id}" 
+         data-room-name="${room.name}">
+      <p>${room.name}</p>
+    </div>
+    `;
+        });
+
+        // Add click event listeners to room elements
+        document.querySelectorAll(".room").forEach((roomElement) => {
+          roomElement.addEventListener("click", () => {
+            const roomId = roomElement.getAttribute("data-room-id");
+            const roomName = roomElement.getAttribute("data-room-name");
+            selectRoom(roomId, roomName);
+          });
+        });
+      }
+
+      function selectRoom(roomId, roomName) {
+        currentRoomId = roomId;
+        currentRoomName.textContent = roomName;
+
+        // Update URL with the selected room
+        const url = new URL(window.location);
+        url.searchParams.set("roomId", roomId);
+        window.history.pushState({}, "", url);
+
+        // Update room join/leave buttons
+        updateRoomActionButtons();
+
+        // Check if user has joined this room
+        const isJoined = userRooms.some((room) => room.id === roomId);
+
+        if (isJoined) {
+          // If joined, get messages for this room
+          socket.emit("getRoomMessages", { roomId });
+        } else {
+          // If not joined, show empty message area with join prompt
+          chatArea.innerHTML = `<div class="info-message">You need to join this room to see messages.</div>`;
+        }
+      }
+
+      function updateRoomActionButtons() {
+        // Don't show join/leave buttons for the general room
+        const isGeneralRoom =
+          currentRoomName.textContent.toLowerCase() === "general";
+
+        if (isGeneralRoom) {
+          joinRoomBtn.style.display = "none";
+          leaveRoomBtn.style.display = "none";
+          return;
+        }
+
+        // Check if user has already joined this room
+        const isJoined = userRooms.some((room) => room.id === currentRoomId);
+
+        joinRoomBtn.style.display = isJoined ? "none" : "inline-block";
+        leaveRoomBtn.style.display = isJoined ? "inline-block" : "none";
+      }
+
+      async function joinRoom() {
+        if (!currentRoomId) return;
+
+        joinRoomBtn.disabled = true;
+        joinRoomBtn.textContent = "Joining...";
+
+        try {
+          // Emit join room event and wait for response
+          socket.emit("joinRoom", { roomId: currentRoomId }, (response) => {
+            if (response && response.error) {
+              // Show error message
+              const errorElement = document.createElement("div");
+              errorElement.className = "error-message";
+              errorElement.textContent = response.error;
+              chatArea.appendChild(errorElement);
+              setTimeout(() => errorElement.remove(), 5000);
+              return;
+            }
+
+            // Add room to user's joined rooms
+            const room = allRooms.find((r) => r.id === currentRoomId);
+            if (room && !userRooms.some((r) => r.id === room.id)) {
+              userRooms.push(room);
+            }
+
+            // Update UI
+            updateRoomActionButtons();
+            renderRooms(allRooms);
+
+            // Request messages for the joined room
+            socket.emit("getRoomMessages", { roomId: currentRoomId });
+          });
+        } catch (error) {
+          console.error("Error joining room:", error);
+          const errorElement = document.createElement("div");
+          errorElement.className = "error-message";
+          errorElement.textContent = "Failed to join room";
+          chatArea.appendChild(errorElement);
+          setTimeout(() => errorElement.remove(), 5000);
+        } finally {
+          joinRoomBtn.disabled = false;
+          joinRoomBtn.textContent = "Join room";
+        }
+      }
+
+      async function leaveRoom() {
+        if (!currentRoomId) return;
+
+        // Don't allow leaving the general room
+        if (currentRoomName.textContent.toLowerCase() === "general") {
+          return;
+        }
+
+        leaveRoomBtn.disabled = true;
+        leaveRoomBtn.textContent = "Leaving...";
+
+        try {
+          // Emit leave room event and wait for response
+          socket.emit("leaveRoom", { roomId: currentRoomId }, (response) => {
+            if (response && response.error) {
+              // Show error message
+              const errorElement = document.createElement("div");
+              errorElement.className = "error-message";
+              errorElement.textContent = response.error;
+              chatArea.appendChild(errorElement);
+              setTimeout(() => errorElement.remove(), 5000);
+              return;
+            }
+
+            // Remove room from user's joined rooms
+            userRooms = userRooms.filter((room) => room.id !== currentRoomId);
+
+            // Update UI
+            updateRoomActionButtons();
+            renderRooms(allRooms);
+
+            // Clear chat area and show join prompt
+            chatArea.innerHTML = `<div class="info-message">You need to join this room to see messages.</div>`;
+          });
+        } catch (error) {
+          console.error("Error leaving room:", error);
+          const errorElement = document.createElement("div");
+          errorElement.className = "error-message";
+          errorElement.textContent = "Failed to leave room";
+          chatArea.appendChild(errorElement);
+          setTimeout(() => errorElement.remove(), 5000);
+        } finally {
+          leaveRoomBtn.disabled = false;
+          leaveRoomBtn.textContent = "Leave room";
+        }
       }
 
       async function initialDataFetch() {
         const usersFetchReq = useFetch("/users");
         const roomsFetchReq = useFetch("/rooms");
+        const userRoomsFetchReq = useFetch("/users/rooms"); // Endpoint to get user's rooms
 
-        const [userFetch, roomFetch] = await Promise.all([
+        const [userFetch, roomFetch, userRoomsFetch] = await Promise.all([
           usersFetchReq,
           roomsFetchReq,
+          userRoomsFetchReq,
         ]);
 
         const [users, usersError] = userFetch;
-        if (usersError) console.error(error);
+        if (usersError) console.error(usersError);
 
         allUsers = users.filter((user) => user.username !== "system");
         renderUsers(allUsers);
 
         const [rooms, roomsFetchError] = roomFetch;
-        if (roomsFetchError) console.error(error);
+        if (roomsFetchError) console.error(roomsFetchError);
 
-        rooms.forEach((room) => {
-          $("#rooms").innerHTML += `
-                  <div class="room">
-                    <p>${room.name}</p>
-                  </div>
-                  `;
-        });
+        allRooms = rooms;
+
+        const [userRoomsData, userRoomsError] = userRoomsFetch;
+        if (!userRoomsError && userRoomsData) {
+          userRooms = userRoomsData;
+        } else {
+          // Fallback: assume user is at least in general room
+          const generalRoom = rooms.find(
+            (room) => room.name.toLowerCase() === "general"
+          );
+          if (generalRoom) {
+            userRooms = [generalRoom];
+          }
+        }
+
+        renderRooms(rooms);
+
+        // Get roomId from URL or use general room as default
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomIdFromUrl = urlParams.get("roomId");
+
+        if (roomIdFromUrl) {
+          const room = rooms.find((r) => r.id === roomIdFromUrl);
+          if (room) {
+            selectRoom(room.id, room.name);
+          } else {
+            // Fallback to general room if roomId is invalid
+            const generalRoom = rooms.find(
+              (room) => room.name.toLowerCase() === "general"
+            );
+            if (generalRoom) {
+              selectRoom(generalRoom.id, generalRoom.name);
+            }
+          }
+        } else {
+          // Default to general room if no roomId in URL
+          const generalRoom = rooms.find(
+            (room) => room.name.toLowerCase() === "general"
+          );
+          if (generalRoom) {
+            selectRoom(generalRoom.id, generalRoom.name);
+          }
+        }
       }
 
       loginForm.addEventListener("submit", handleLoginEvent);
       logoutButton.addEventListener("click", handleLogoutEvent);
       chatForm.addEventListener("submit", postChatMessage);
+      joinRoomBtn.addEventListener("click", joinRoom);
+      leaveRoomBtn.addEventListener("click", leaveRoom);
 
       async function handleLoginEvent(event) {
         event.preventDefault();
@@ -276,6 +558,7 @@
 
         isAuth = true;
         userDetails.username = data.username;
+        userDetails.userId = data.userId || data.sub; // Store the user ID
         loginForm.style.display = "none";
         authStatusBox.innerText = `Signed in as ${data.username}`;
         logoutButton.style.display = "block";
@@ -289,9 +572,32 @@
           console.error("Cannot post chat message, not authenticated");
           return;
         }
+
+        if (!msg.trim()) {
+          return; // Don't send empty messages
+        }
+
+        // Check if the user has joined the current room
+        const isJoined = userRooms.some((room) => room.id === currentRoomId);
+        if (!isJoined) {
+          // Display error and don't send message
+          const errorElement = document.createElement("div");
+          errorElement.className = "error-message";
+          errorElement.textContent =
+            "You need to join this room to send messages";
+          chatArea.appendChild(errorElement);
+
+          // Auto-remove after 5 seconds
+          setTimeout(() => {
+            errorElement.remove();
+          }, 5000);
+          return;
+        }
+
         socket.emit("roomMessageEmit", {
           username: userDetails.username,
           message: msg,
+          roomId: currentRoomId,
         });
 
         chatForm["new-msg-box"].value = "";
@@ -325,7 +631,7 @@
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
         await initialDataFetch();
-        socket.emit("getOnlineUsersUpdate");
+        socket.emit("getOnlineUsers");
 
         appReady = true;
       });

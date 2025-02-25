@@ -1,4 +1,4 @@
-import { OnModuleInit, UseGuards } from '@nestjs/common';
+import { OnModuleInit, UseGuards, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -12,6 +12,9 @@ import { Server, Socket } from 'socket.io';
 import { jwtConstants } from 'src/auth/constants';
 import { WsAuthGuard } from './gateway.auth.guard';
 import { GatewayService } from './gateway.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Room } from '../rooms/entities/room.entity';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -32,6 +35,8 @@ export class MyGateway implements OnModuleInit {
   constructor(
     private jwtService: JwtService,
     private gatewayService: GatewayService,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
   ) {}
 
   @WebSocketServer()
@@ -43,9 +48,40 @@ export class MyGateway implements OnModuleInit {
       console.log(socket.id);
       console.log('Connected');
 
-      const messages = await this.gatewayService.getAllMessages();
-      socket.emit('roomPreviousMessages', messages);
-      this.server.emit('newUserJoined', 'a new user joined');
+      try {
+        // Find the general room
+        const generalRoom = await this.roomRepository.findOne({
+          where: { name: 'general' },
+        });
+
+        if (generalRoom) {
+          // Automatically join the user to the general room
+          socket.join(generalRoom.id);
+
+          // Get messages for the general room
+          const messages = await this.gatewayService.getMessagesByRoom(
+            generalRoom.id,
+          );
+          socket.emit('roomPreviousMessages', messages);
+
+          // Notify others in the general room
+          socket.to(generalRoom.id).emit('userJoinedRoom', {
+            username: socket.data.user.username,
+            roomId: generalRoom.id,
+          });
+        } else {
+          // Fallback to old behavior if general room doesn't exist
+          const messages = await this.gatewayService.getAllMessages();
+          socket.emit('roomPreviousMessages', messages);
+        }
+
+        this.server.emit('newUserJoined', 'a new user joined');
+      } catch (error) {
+        console.error('Error in connection handler:', error);
+        // Fallback to old behavior
+        const messages = await this.gatewayService.getAllMessages();
+        socket.emit('roomPreviousMessages', messages);
+      }
     });
   }
 
@@ -104,16 +140,36 @@ export class MyGateway implements OnModuleInit {
     @MessageBody() body: NewMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
+    // Find the general room if no room ID is provided
+    let roomId = body.roomId;
+
+    if (!roomId || roomId === 'default') {
+      try {
+        const generalRoom = await this.roomRepository.findOne({
+          where: { name: 'general' },
+        });
+        if (generalRoom) {
+          roomId = generalRoom.id;
+        } else {
+          roomId = 'default';
+        }
+      } catch (error) {
+        console.error('Error finding general room:', error);
+        roomId = 'default';
+      }
+    }
+
     const messageData = {
       username: client.data.user.username,
       message: body.message,
       timestamp: new Date().toISOString(),
-      roomId: body.roomId || 'default',
+      roomId,
     };
 
     const savedMessage = await this.gatewayService.saveMessage(messageData);
 
-    this.server.emit('roomMessageBroadcast', savedMessage);
+    // Broadcast to the specific room instead of all clients
+    this.server.to(roomId).emit('roomMessageBroadcast', savedMessage);
   }
 
   @UseGuards(WsAuthGuard)

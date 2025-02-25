@@ -1,0 +1,537 @@
+=========src/auth/auth.controller.ts=========
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Res,
+  UseGuards,
+  Req,
+  Request,
+  NotFoundException,
+} from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { User } from 'src/users/dto/users.dto';
+import { Response } from 'express';
+import { JWTAuthGuard } from './auth.guard';
+import { jwtConstants } from './constants';
+import { UsersService } from 'src/users/users.service';
+
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private authService: AuthService,
+    private usersService: UsersService,
+  ) {}
+
+  @HttpCode(HttpStatus.OK)
+  @Post('/login')
+  async signIn(
+    @Body() signInDto: User,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken } = await this.authService.signIn(
+      signInDto.username,
+      signInDto.password,
+    );
+
+    response.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      signed: true,
+      secure: true,
+      sameSite: true,
+      maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+    });
+
+    return {
+      status: 'success',
+      message: 'login succesful',
+    };
+  }
+
+  @UseGuards(JWTAuthGuard)
+  @Get('profile')
+  async getProfile(@Request() req) {
+    const username = req?.user?.username;
+    if (!username) {
+      throw NotFoundException;
+    }
+    const user = await this.usersService.findOne(username);
+    return user;
+  }
+
+  @UseGuards(JWTAuthGuard)
+  @Post('logout')
+  async handleLogout(
+    @Request() req,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const username = req?.user?.username;
+    if (!username) {
+      throw NotFoundException;
+    }
+
+    response.clearCookie('accessToken', {
+      httpOnly: true,
+      signed: true,
+      secure: true,
+      sameSite: true,
+    });
+
+    return {};
+  }
+}
+
+
+========src/users/users.service.ts=============
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from './entities/user.entity';
+import { SeedService } from '../seed/seed.service';
+import { CreateUserDto } from './dto/create-user.dto';
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @InjectRepository(User)
+    private usersRepository: Repository,
+    private seedService: SeedService,
+  ) {}
+
+  private readonly users = [
+    {
+      id: 1,
+      username: 'osi',
+      password: 'the-nemb',
+    },
+    {
+      id: 2,
+      username: 'vicradon',
+      password: 'the-voms',
+    },
+  ];
+
+  async create(createUserDto: CreateUserDto): Promise {
+    const user = this.usersRepository.create(createUserDto);
+    const savedUser = await this.usersRepository.save(user);
+
+    await this.seedService.addUserToGeneralRoom(savedUser);
+
+    return savedUser;
+  }
+  async fetchAll() {
+    return this.users;
+  }
+
+  async findOne(username: string): Promise {
+    return this.usersRepository.findOne({ where: { username } });
+  }
+
+  async findById(id: number): Promise {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+}
+
+
+=========src/auth/auth.module.ts=========
+import { Module } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { UsersModule } from 'src/users/users.module';
+import { JwtModule } from '@nestjs/jwt';
+import { jwtConstants } from './constants';
+
+@Module({
+  imports: [
+    UsersModule,
+    JwtModule.register({
+      global: true,
+      secret: jwtConstants.secret,
+      signOptions: { expiresIn: '60m' },
+    }),
+  ],
+  providers: [AuthService],
+  controllers: [AuthController],
+})
+export class AuthModule {}
+
+
+========src/auth/auth.service.ts=========
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from 'src/users/users.service';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private usersService: UsersService,
+    private jwtService: JwtService,
+  ) {}
+
+  async signIn(
+    username: string,
+    pass: string,
+  ): Promise<{ accessToken: string }> {
+    console.log(username, pass);
+    const user = await this.usersService.findOne(username);
+    if (user?.password !== pass) {
+      throw new UnauthorizedException();
+    }
+    const payload = { sub: user.id, username: user.username };
+
+    return {
+      accessToken: await this.jwtService.signAsync(payload),
+    };
+  }
+}
+
+
+====src/users/dto/users.dto.ts=======
+export type User = {
+  id: number;
+  username: string;
+  password: string;
+};
+
+export type JWTPayload = {
+  sub: string;
+  username: string;
+};
+
+
+=====src/users/dto/create-user.dto.ts=======
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+
+export class CreateUserDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  username: string;
+
+  id: number;
+  password: string;
+}
+
+======src/seed/seed.module.ts=======
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Room } from '../rooms/entities/room.entity';
+import { User } from '../users/entities/user.entity';
+import { SeedService } from './seed.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Room, User])],
+  providers: [SeedService],
+  exports: [SeedService],
+})
+export class SeedModule {}
+
+
+=======src/seed/seed.service.ts========
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Not, Repository } from 'typeorm';
+import { Room } from '../rooms/entities/room.entity';
+import { User } from '../users/entities/user.entity';
+
+@Injectable()
+export class SeedService implements OnModuleInit {
+  private readonly logger = new Logger(SeedService.name);
+
+  constructor(
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+  ) {}
+
+  async onModuleInit() {
+    await this.seedDefaultRoom();
+  }
+
+  async seedDefaultRoom() {
+    try {
+      // Check if general room already exists
+      const existingRoom = await this.roomRepository.findOne({
+        where: { name: 'general' },
+      });
+
+      if (!existingRoom) {
+        // Find or create a system user to be the creator of the general room
+        let systemUser = await this.userRepository.findOne({
+          where: { username: 'system' },
+        });
+
+        if (!systemUser) {
+          // Create a system user if it doesn't exist
+          systemUser = this.userRepository.create({
+            username: 'system',
+            password: 'SYSTEM_USER_' + Math.random().toString(36).slice(2, 15),
+          });
+          await this.userRepository.save(systemUser);
+          this.logger.log('System user created for general room creation');
+        }
+
+        // Create the general room
+        const generalRoom = this.roomRepository.create({
+          name: 'general',
+          created_by: systemUser,
+          created_by_id: systemUser.id,
+          members: [systemUser], // Initially include system user
+        });
+
+        await this.roomRepository.save(generalRoom);
+        this.logger.log('Default general room created successfully');
+
+        // Add all existing users to the general room
+        const allUsers = await this.userRepository.find({
+          where: { username: Not('system') }, // Exclude system user as it's already added
+        });
+
+        if (allUsers.length > 0) {
+          const room = await this.roomRepository.findOne({
+            where: { name: 'general' },
+            relations: ['members'],
+          });
+
+          room.members = [...room.members, ...allUsers];
+          await this.roomRepository.save(room);
+          this.logger.log(
+            `Added ${allUsers.length} existing users to general room`,
+          );
+        }
+      } else {
+        this.logger.log('Default general room already exists');
+      }
+    } catch (error) {
+      this.logger.error('Failed to seed default room:', error);
+    }
+  }
+
+  // Method to add a user to the general room
+  async addUserToGeneralRoom(user: User): Promise<void> {
+    try {
+      const generalRoom = await this.roomRepository.findOne({
+        where: { name: 'general' },
+        relations: ['members'],
+      });
+
+      if (!generalRoom) {
+        this.logger.error('General room not found when trying to add new user');
+        return;
+      }
+
+      // Check if user is already a member
+      const isMember = generalRoom.members.some(
+        (member) => member.id === user.id,
+      );
+
+      if (!isMember) {
+        generalRoom.members.push(user);
+        await this.roomRepository.save(generalRoom);
+        this.logger.log(`User ${user.username} added to general room`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to add user to general room: ${error.message}`);
+    }
+  }
+}
+
+========src/gateway/gateway.controller.ts=======
+import { OnModuleInit, UseGuards, Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import {
+  ConnectedSocket,
+  MessageBody,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
+import { unsign } from 'cookie-signature';
+import { Server, Socket } from 'socket.io';
+import { jwtConstants } from 'src/auth/constants';
+import { WsAuthGuard } from './gateway.auth.guard';
+import { GatewayService } from './gateway.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Room } from '../rooms/entities/room.entity';
+import * as dotenv from 'dotenv';
+dotenv.config();
+
+type NewMessageDto = {
+  username: string;
+  message: string;
+  timestamp?: string;
+  roomId?: string;
+};
+
+@WebSocketGateway({
+  cors: {
+    origin: ['http://localhost:3200'],
+    credentials: true,
+  },
+})
+export class MyGateway implements OnModuleInit {
+  constructor(
+    private jwtService: JwtService,
+    private gatewayService: GatewayService,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
+  ) {}
+
+  @WebSocketServer()
+  server: Server;
+
+  async onModuleInit() {
+    this.server.use(this.createAuthMiddleware());
+    this.server.on('connection', async (socket) => {
+      console.log(socket.id);
+      console.log('Connected');
+
+      try {
+        // Find the general room
+        const generalRoom = await this.roomRepository.findOne({
+          where: { name: 'general' },
+        });
+
+        if (generalRoom) {
+          // Automatically join the user to the general room
+          socket.join(generalRoom.id);
+
+          // Get messages for the general room
+          const messages = await this.gatewayService.getMessagesByRoom(
+            generalRoom.id,
+          );
+          socket.emit('roomPreviousMessages', messages);
+
+          // Notify others in the general room
+          socket.to(generalRoom.id).emit('userJoinedRoom', {
+            username: socket.data.user.username,
+            roomId: generalRoom.id,
+          });
+        } else {
+          // Fallback to old behavior if general room doesn't exist
+          const messages = await this.gatewayService.getAllMessages();
+          socket.emit('roomPreviousMessages', messages);
+        }
+
+        this.server.emit('newUserJoined', 'a new user joined');
+      } catch (error) {
+        console.error('Error in connection handler:', error);
+        // Fallback to old behavior
+        const messages = await this.gatewayService.getAllMessages();
+        socket.emit('roomPreviousMessages', messages);
+      }
+    });
+  }
+
+  private createAuthMiddleware() {
+    return async (socket: Socket, next) => {
+      try {
+        const cookieString = socket.handshake.headers.cookie || '';
+        const cookies = this.parseCookies(cookieString);
+
+        const signedCookie = decodeURIComponent(cookies?.['accessToken']);
+
+        if (!signedCookie) {
+          return next(new Error('Authentication error'));
+        }
+
+        let token;
+        if (signedCookie.startsWith('s')) {
+          const value = signedCookie.slice(2);
+          token = unsign(value, process.env.COOKIE_SIGNING_KEY);
+          if (!token) {
+            return next(new Error('Invalid cookie signature'));
+          }
+        } else {
+          return next(new Error('Invalid cookie format'));
+        }
+
+        const payload = await this.jwtService.verifyAsync(token, {
+          secret: jwtConstants.secret,
+        });
+
+        socket.data.user = payload;
+        next();
+      } catch (err) {
+        console.error('Auth error:', err);
+        next(new Error('Authentication error'));
+      }
+    };
+  }
+
+  private parseCookies(cookieString: string): Record<string, string> {
+    const cookies: Record<string, string> = {};
+
+    cookieString.split(';').forEach((cookie) => {
+      const [name, value] = cookie.trim().split('=');
+      if (name && value) {
+        cookies[name] = value;
+      }
+    });
+
+    return cookies;
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('roomMessageEmit')
+  async onNewMessage(
+    @MessageBody() body: NewMessageDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    // Find the general room if no room ID is provided
+    let roomId = body.roomId;
+
+    if (!roomId || roomId === 'default') {
+      try {
+        const generalRoom = await this.roomRepository.findOne({
+          where: { name: 'general' },
+        });
+        if (generalRoom) {
+          roomId = generalRoom.id;
+        } else {
+          roomId = 'default';
+        }
+      } catch (error) {
+        console.error('Error finding general room:', error);
+        roomId = 'default';
+      }
+    }
+
+    const messageData = {
+      username: client.data.user.username,
+      message: body.message,
+      timestamp: new Date().toISOString(),
+      roomId,
+    };
+
+    const savedMessage = await this.gatewayService.saveMessage(messageData);
+
+    // Broadcast to the specific room instead of all clients
+    this.server.to(roomId).emit('roomMessageBroadcast', savedMessage);
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('joinRoom')
+  async onJoinRoom(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const roomId = data.roomId;
+
+    client.join(roomId);
+
+    const messages = await this.gatewayService.getMessagesByRoom(roomId);
+
+    client.emit('roomPreviousMessages', messages);
+
+    client.to(roomId).emit('userJoinedRoom', {
+      username: client.data.user.username,
+      roomId,
+    });
+  }
+}

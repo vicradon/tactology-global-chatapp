@@ -12,9 +12,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { User } from 'src/users/users.dto';
+import { User } from 'src/users/dto/users.dto';
 import { Response } from 'express';
-import { AuthGuard } from './auth.guard';
+import { JWTAuthGuard } from './auth.guard';
 import { jwtConstants } from './constants';
 import { UsersService } from 'src/users/users.service';
 
@@ -50,7 +50,7 @@ export class AuthController {
     };
   }
 
-  @UseGuards(AuthGuard)
+  @UseGuards(JWTAuthGuard)
   @Get('profile')
   async getProfile(@Request() req) {
     const username = req?.user?.username;
@@ -61,7 +61,7 @@ export class AuthController {
     return user;
   }
 
-  @UseGuards(AuthGuard)
+  @UseGuards(JWTAuthGuard)
   @Post('logout')
   async handleLogout(
     @Request() req,

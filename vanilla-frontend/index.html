@@ -54,6 +54,9 @@
         <div id="users-space">
           <p>Users</p>
           <div id="users"></div>
+
+          <p>Rooms</p>
+          <div id="rooms"></div>
         </div>
         <div id="chat-area"></div>
       </div>
@@ -105,16 +108,16 @@
         const isCurrentUser = data.username === userDetails.username;
 
         return `
-        <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
-          <p class="chat-bubble-username">~${data.username}</p>
-          <div class="chat-bubble-chatdata">
-            <p class="chat-bubble-message">${data.message}</p>
-            <p class="chat-bubble-timestamp">${convertToLocalTime(
-              data.timestamp
-            )}</p>
-          </div>
-        </div>
-      `;
+              <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
+                <p class="chat-bubble-username">~${data.username}</p>
+                <div class="chat-bubble-chatdata">
+                  <p class="chat-bubble-message">${data.message}</p>
+                  <p class="chat-bubble-timestamp">${convertToLocalTime(
+                    data.timestamp
+                  )}</p>
+                </div>
+              </div>
+            `;
       }
 
       socket.on("roomPreviousMessages", (messages) => {
@@ -167,16 +170,35 @@
         }
       };
 
-      async function fetchUsers() {
-        const [users, error] = await useFetch("/users");
-        if (error) return console.error(error);
+      async function initialDataFetch() {
+        const usersFetchReq = useFetch("/users");
+        const roomsFetchReq = useFetch("/rooms");
+
+        const [userFetch, roomFetch] = await Promise.all([
+          usersFetchReq,
+          roomsFetchReq,
+        ]);
+
+        const [users, usersError] = userFetch;
+        if (usersError) console.error(error);
 
         users.forEach((user) => {
           $("#users").innerHTML += `
-            <div class="user">
-              <span class="user-status-indicator"></span><p>${user.username}</p>
-            </div>
-            `;
+                  <div class="user">
+                    <span class="user-status-indicator"></span><p>${user.username}</p>
+                  </div>
+                  `;
+        });
+
+        const [rooms, roomsFetchError] = roomFetch;
+        if (roomsFetchError) console.error(error);
+
+        rooms.forEach((room) => {
+          $("#rooms").innerHTML += `
+                  <div class="room">
+                    <p>${room.name}</p>
+                  </div>
+                  `;
         });
       }
 
@@ -193,8 +215,8 @@
           password,
         });
         if (error) return console.error(error);
-        await fetchUserProfile();
-        await fetchUsers();
+
+        window.location.reload();
       }
 
       async function handleLogoutEvent(event) {
@@ -209,6 +231,7 @@
         authStatusBox.innerText = "Not signed in";
         loginForm.style.display = "block";
         logoutButton.style.display = "none";
+        window.location.reload();
       }
 
       async function fetchUserProfile() {
@@ -271,7 +294,7 @@
 
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
-        await fetchUsers();
+        await initialDataFetch();
 
         appReady = true;
       });

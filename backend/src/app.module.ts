@@ -7,6 +7,8 @@ import { GatewayModule } from './gateway/gateway.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { databaseConfig } from './config/database.config';
+import { RoomModule } from './rooms/room.module';
+import { SeedModule } from './seed/seed.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { databaseConfig } from './config/database.config';
     GatewayModule,
     AuthModule,
     UsersModule,
+    RoomModule,
+    SeedModule,
   ],
   controllers: [AppController],
   providers: [AppService],

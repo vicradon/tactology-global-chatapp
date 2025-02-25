@@ -11,13 +11,15 @@ import { unsign } from 'cookie-signature';
 import { Server, Socket } from 'socket.io';
 import { jwtConstants } from 'src/auth/constants';
 import { WsAuthGuard } from './gateway.auth.guard';
+import { GatewayService } from './gateway.service';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-type NewMessage = {
+type NewMessageDto = {
   username: string;
   message: string;
-  timestamp: string;
+  timestamp?: string;
+  roomId?: string;
 };
 
 @WebSocketGateway({
@@ -27,19 +29,22 @@ type NewMessage = {
   },
 })
 export class MyGateway implements OnModuleInit {
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private gatewayService: GatewayService,
+  ) {}
 
   @WebSocketServer()
   server: Server;
 
-  messages: NewMessage[] = [];
-
-  onModuleInit() {
+  async onModuleInit() {
     this.server.use(this.createAuthMiddleware());
-    this.server.on('connection', (socket) => {
+    this.server.on('connection', async (socket) => {
       console.log(socket.id);
       console.log('Connected');
-      socket.emit('roomPreviousMessages', this.messages);
+
+      const messages = await this.gatewayService.getAllMessages();
+      socket.emit('roomPreviousMessages', messages);
       this.server.emit('newUserJoined', 'a new user joined');
     });
   }
@@ -50,7 +55,6 @@ export class MyGateway implements OnModuleInit {
         const cookieString = socket.handshake.headers.cookie || '';
         const cookies = this.parseCookies(cookieString);
 
-        // Get the signed cookie
         const signedCookie = decodeURIComponent(cookies?.['accessToken']);
 
         if (!signedCookie) {
@@ -72,7 +76,6 @@ export class MyGateway implements OnModuleInit {
           secret: jwtConstants.secret,
         });
 
-        // Store user info in socket for later use
         socket.data.user = payload;
         next();
       } catch (err) {
@@ -81,6 +84,7 @@ export class MyGateway implements OnModuleInit {
       }
     };
   }
+
   private parseCookies(cookieString: string): Record<string, string> {
     const cookies: Record<string, string> = {};
 
@@ -96,13 +100,39 @@ export class MyGateway implements OnModuleInit {
 
   @UseGuards(WsAuthGuard)
   @SubscribeMessage('roomMessageEmit')
-  onNewMessage(
-    @MessageBody() body: NewMessage,
+  async onNewMessage(
+    @MessageBody() body: NewMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
-    body.username = client.data.user.username;
-    body.timestamp = new Date().toISOString();
-    this.messages.push(body);
-    this.server.emit('roomMessageBroadcast', body);
+    const messageData = {
+      username: client.data.user.username,
+      message: body.message,
+      timestamp: new Date().toISOString(),
+      roomId: body.roomId || 'default',
+    };
+
+    const savedMessage = await this.gatewayService.saveMessage(messageData);
+
+    this.server.emit('roomMessageBroadcast', savedMessage);
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('joinRoom')
+  async onJoinRoom(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const roomId = data.roomId;
+
+    client.join(roomId);
+
+    const messages = await this.gatewayService.getMessagesByRoom(roomId);
+
+    client.emit('roomPreviousMessages', messages);
+
+    client.to(roomId).emit('userJoinedRoom', {
+      username: client.data.user.username,
+      roomId,
+    });
   }
 }

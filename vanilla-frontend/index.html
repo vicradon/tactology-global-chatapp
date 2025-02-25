@@ -118,6 +118,7 @@
       }
 
       socket.on("roomPreviousMessages", (messages) => {
+        chatArea.innerHTML = "";
         messages.forEach((msg) => {
           chatArea.innerHTML += renderChatBubble(msg);
         });

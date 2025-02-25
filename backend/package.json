@@ -26,13 +26,16 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.10",
     "@nestjs/platform-socket.io": "^11.0.10",
+    "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.0.10",
     "cookie-parser": "^1.4.7",
     "cookie-signature": "^1.2.2",
     "dotenv": "^16.4.7",
+    "pg": "^8.13.3",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "typeorm": "^0.3.20"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

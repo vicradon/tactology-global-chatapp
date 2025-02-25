@@ -15,7 +15,7 @@ import { AuthService } from './auth.service';
 import { User } from 'src/users/users.dto';
 import { Response } from 'express';
 import { AuthGuard } from './auth.guard';
-import { CREDENTIALS_MAX_AGE_IN_SECONDS } from './constants';
+import { jwtConstants } from './constants';
 import { UsersService } from 'src/users/users.service';
 
 @Controller('auth')
@@ -41,7 +41,7 @@ export class AuthController {
       signed: true,
       secure: true,
       sameSite: true,
-      maxAge: CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+      maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
     });
 
     return {

@@ -6,6 +6,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { unsign } from 'cookie-signature';
 import { Server, Socket } from 'socket.io';
@@ -25,13 +26,21 @@ type NewMessageDto = {
   roomId?: string;
 };
 
+interface OnlineUser {
+  username: string;
+  socketId: string;
+  lastActive: Date;
+}
+
 @WebSocketGateway({
   cors: {
     origin: ['http://localhost:3200'],
     credentials: true,
   },
 })
-export class MyGateway implements OnModuleInit {
+export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
+  private onlineUsers: Map<number, OnlineUser> = new Map();
+
   constructor(
     private jwtService: JwtService,
     private gatewayService: GatewayService,
@@ -49,28 +58,29 @@ export class MyGateway implements OnModuleInit {
       console.log('Connected');
 
       try {
-        // Find the general room
+        const userId = socket.data.user.sub;
+        const username = socket.data.user.username;
+
+        this.addOnlineUser(userId, username, socket.id);
+        this.broadcastOnlineUsers();
+
         const generalRoom = await this.roomRepository.findOne({
           where: { name: 'general' },
         });
 
         if (generalRoom) {
-          // Automatically join the user to the general room
           socket.join(generalRoom.id);
 
-          // Get messages for the general room
           const messages = await this.gatewayService.getMessagesByRoom(
             generalRoom.id,
           );
           socket.emit('roomPreviousMessages', messages);
 
-          // Notify others in the general room
           socket.to(generalRoom.id).emit('userJoinedRoom', {
             username: socket.data.user.username,
             roomId: generalRoom.id,
           });
         } else {
-          // Fallback to old behavior if general room doesn't exist
           const messages = await this.gatewayService.getAllMessages();
           socket.emit('roomPreviousMessages', messages);
         }
@@ -78,11 +88,53 @@ export class MyGateway implements OnModuleInit {
         this.server.emit('newUserJoined', 'a new user joined');
       } catch (error) {
         console.error('Error in connection handler:', error);
-        // Fallback to old behavior
         const messages = await this.gatewayService.getAllMessages();
         socket.emit('roomPreviousMessages', messages);
       }
     });
+  }
+
+  handleDisconnect(socket: Socket) {
+    try {
+      if (socket.data?.user?.sub) {
+        this.removeOnlineUser(socket.data.user.sub);
+        this.broadcastOnlineUsers();
+      }
+    } catch (error) {
+      console.error('Error handling disconnect:', error);
+    }
+  }
+
+  async onGatewayDisconnect(socket: Socket) {
+    this.handleDisconnect(socket);
+  }
+
+  private addOnlineUser(userId: number, username: string, socketId: string) {
+    this.onlineUsers.set(userId, {
+      username,
+      socketId,
+      lastActive: new Date(),
+    });
+  }
+
+  private removeOnlineUser(userId: number) {
+    this.onlineUsers.delete(userId);
+  }
+
+  private updateUserActivity(userId: number) {
+    const user = this.onlineUsers.get(userId);
+    if (user) {
+      user.lastActive = new Date();
+    }
+  }
+
+  private getOnlineUsers(): OnlineUser[] {
+    return Array.from(this.onlineUsers.values());
+  }
+
+  private broadcastOnlineUsers() {
+    const onlineUsers = this.getOnlineUsers();
+    this.server.emit('onlineUsersUpdate', onlineUsers);
   }
 
   private createAuthMiddleware() {
@@ -140,7 +192,10 @@ export class MyGateway implements OnModuleInit {
     @MessageBody() body: NewMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
-    // Find the general room if no room ID is provided
+    if (client.data?.user?.sub) {
+      this.updateUserActivity(client.data.user.sub);
+    }
+
     let roomId = body.roomId;
 
     if (!roomId || roomId === 'default') {
@@ -167,8 +222,6 @@ export class MyGateway implements OnModuleInit {
     };
 
     const savedMessage = await this.gatewayService.saveMessage(messageData);
-
-    // Broadcast to the specific room instead of all clients
     this.server.to(roomId).emit('roomMessageBroadcast', savedMessage);
   }
 
@@ -178,17 +231,34 @@ export class MyGateway implements OnModuleInit {
     @MessageBody() data: { roomId: string },
     @ConnectedSocket() client: Socket,
   ) {
+    if (client.data?.user?.sub) {
+      this.updateUserActivity(client.data.user.sub);
+    }
+
     const roomId = data.roomId;
-
     client.join(roomId);
-
     const messages = await this.gatewayService.getMessagesByRoom(roomId);
-
     client.emit('roomPreviousMessages', messages);
 
     client.to(roomId).emit('userJoinedRoom', {
       username: client.data.user.username,
       roomId,
     });
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('getOnlineUsers')
+  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
+    const onlineUsers = this.getOnlineUsers();
+    client.emit('onlineUsersUpdate', onlineUsers);
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('heartbeat')
+  handleHeartbeat(@ConnectedSocket() client: Socket) {
+    if (client.data?.user?.sub) {
+      this.updateUserActivity(client.data.user.sub);
+    }
+    return { status: 'ok' };
   }
 }

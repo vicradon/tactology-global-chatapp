@@ -13,36 +13,30 @@ export class UsersService {
     private seedService: SeedService,
   ) {}
 
-  private readonly users = [
-    {
-      id: 1,
-      username: 'osi',
-      password: 'the-nemb',
-    },
-    {
-      id: 2,
-      username: 'vicradon',
-      password: 'the-voms',
-    },
-  ];
+  async getSystemUser(): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { username: 'system' },
+    });
+  }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const user = this.usersRepository.create(createUserDto);
     const savedUser = await this.usersRepository.save(user);
-
     await this.seedService.addUserToGeneralRoom(savedUser);
-
     return savedUser;
   }
-  async fetchAll() {
-    return this.users;
+
+  async fetchAll(): Promise<User[]> {
+    return this.usersRepository.find({
+      select: ['id', 'username', 'role'],
+    });
   }
 
-  async findOne(username: string): Promise<User | undefined> {
+  async findOne(username: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { username } });
   }
 
-  async findById(id: number): Promise<User | undefined> {
+  async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
   }
 }

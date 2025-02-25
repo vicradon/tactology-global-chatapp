@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import { Room } from 'src/rooms/entities/room.entity';
 import {
   Entity,
@@ -9,6 +10,7 @@ import {
 
 @Entity()
 export class User {
+  @Exclude()
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -16,7 +18,11 @@ export class User {
   username: string;
 
   @Column()
+  @Exclude()
   password: string;
+
+  @Column({ default: 'user' })
+  role: string;
 
   @OneToMany(() => Room, (room) => room.created_by)
   createdRooms: Room[];

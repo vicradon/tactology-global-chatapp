@@ -87,6 +87,7 @@
 
       let isAuth = false;
       let appReady = false;
+      let allUsers = [];
       let userDetails = { username: "" };
 
       const socket = io("http://localhost:3500/", {
@@ -98,6 +99,22 @@
         statusIndicatorBox.innerText + "connected!";
         console.log("connected");
       });
+
+      socket.on("onlineUsersUpdate", (onlineUsers) => {
+        setTimeout(() => {
+          console.log({ onlineUsers });
+          const onlineUsersUsernames = onlineUsers.map((user) => user.username);
+          const users = allUsers.map((user) => ({
+            ...user,
+            isOnline: onlineUsersUsernames.includes(user.username),
+          }));
+          renderUsers(users);
+        }, 1000);
+      });
+
+      setInterval(() => {
+        socket.emit("heartbeat");
+      }, 30 * 1000);
 
       socket.on("connect_error", (err) => {
         statusIndicatorBox.innerText + "disconnected";
@@ -170,6 +187,24 @@
         }
       };
 
+      async function renderUsers(users) {
+        $("#users").innerHTML = "";
+        users.forEach((user) => {
+          let baseClass = "user-status-indicator ";
+          if (user.isOnline) {
+            baseClass += "user-is-online";
+          } else {
+            baseClass += "user-is-offline";
+          }
+
+          $("#users").innerHTML += `
+                  <div class="user">
+                    <span class="${baseClass}"></span><p>${user.username}</p>
+                  </div>
+                  `;
+        });
+      }
+
       async function initialDataFetch() {
         const usersFetchReq = useFetch("/users");
         const roomsFetchReq = useFetch("/rooms");
@@ -182,13 +217,8 @@
         const [users, usersError] = userFetch;
         if (usersError) console.error(error);
 
-        users.forEach((user) => {
-          $("#users").innerHTML += `
-                  <div class="user">
-                    <span class="user-status-indicator"></span><p>${user.username}</p>
-                  </div>
-                  `;
-        });
+        allUsers = users.filter((user) => user.username !== "system");
+        renderUsers(allUsers);
 
         const [rooms, roomsFetchError] = roomFetch;
         if (roomsFetchError) console.error(error);
@@ -295,6 +325,7 @@
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
         await initialDataFetch();
+        socket.emit("getOnlineUsersUpdate");
 
         appReady = true;
       });

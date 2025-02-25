@@ -81,9 +81,7 @@ body {
 #chat-room {
   display: flex;
   flex-direction: column;
-  border: 2px solid #000;
-  border-radius: 15px;
-  overflow: hidden;
+  height: 100vh;
 }
 
 #chat-room h3 {
@@ -133,22 +131,18 @@ body {
   border-radius: 50%;
 }
 
-/* Green indicator for online users */
-.user:nth-child(1) .user-status-indicator,
-.user:nth-child(2) .user-status-indicator {
-  background-color: #2ecc71;
+.user-is-online {
+  background-color: #2ecc71 !important;
 }
 
-/* Red indicator for offline users */
-.user:nth-child(3) .user-status-indicator {
+.user-is-offline {
   background-color: #e74c3c;
 }
 
 #chat-area {
-  flex: 1;
+  flex-grow: 1;
   padding: 15px;
   background-color: #fff;
-  min-height: 400px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -159,6 +153,7 @@ body {
   max-width: 80%;
   margin-bottom: 10px;
   align-self: flex-start; /* Default: align left for other users */
+  text-wrap: balance;
 }
 
 /* Current user's messages appear on the right */
@@ -182,6 +177,9 @@ body {
 
 .chat-bubble-message {
   margin-bottom: 5px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .chat-bubble-timestamp {
@@ -195,6 +193,9 @@ body {
   padding: 10px;
   background-color: #fff;
   border-top: 1px solid #eee;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 #new-msg-box {

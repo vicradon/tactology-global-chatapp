@@ -1,0 +1,222 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  background-color: #f5f5f5;
+  padding: 20px;
+}
+
+#connection-status-box {
+  padding: 5px;
+  margin-bottom: 10px;
+  text-align: center;
+  font-size: 14px;
+}
+
+#authed-view {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border: 2px solid #000;
+  border-radius: 15px;
+  margin-bottom: 15px;
+  background-color: #fff;
+}
+
+#auth-status-box {
+  font-weight: bold;
+}
+
+#logout-button {
+  padding: 5px 15px;
+  border: 2px solid #000;
+  border-radius: 10px;
+  background-color: #fff;
+  cursor: pointer;
+}
+
+#login-form {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background-color: #fff;
+}
+
+#login-form p {
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+#login-form div {
+  margin-bottom: 15px;
+}
+
+#login-form label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+#login-form input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+#login-form button {
+  padding: 8px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#chat-room {
+  display: flex;
+  flex-direction: column;
+  border: 2px solid #000;
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+#chat-room h3 {
+  padding: 15px;
+  background-color: #f1f1f1;
+  border-bottom: 1px solid #ddd;
+}
+
+#users-space {
+  width: 230px;
+  border-right: 2px solid #000;
+  background-color: #fff;
+  padding: 10px;
+}
+
+#users-space p {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+#users {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px;
+  font-size: 16px;
+}
+
+.user-status-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+/* Green indicator for online users */
+.user:nth-child(1) .user-status-indicator,
+.user:nth-child(2) .user-status-indicator {
+  background-color: #2ecc71;
+}
+
+/* Red indicator for offline users */
+.user:nth-child(3) .user-status-indicator {
+  background-color: #e74c3c;
+}
+
+#chat-area {
+  flex: 1;
+  padding: 15px;
+  background-color: #fff;
+  min-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  margin-bottom: 10px;
+  align-self: flex-start; /* Default: align left for other users */
+}
+
+/* Current user's messages appear on the right */
+.chat-bubble.current-user {
+  align-self: flex-end; /* Align right for current user */
+}
+
+.chat-bubble-username {
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.chat-bubble-chatdata {
+  background-color: #f8f8f8;
+  border: 2px solid #000;
+  border-radius: 15px;
+  padding: 10px 15px;
+  position: relative;
+}
+
+.chat-bubble-message {
+  margin-bottom: 5px;
+}
+
+.chat-bubble-timestamp {
+  font-size: 12px;
+  color: #777;
+  text-align: right;
+}
+
+#chat-form {
+  display: flex;
+  padding: 10px;
+  background-color: #fff;
+  border-top: 1px solid #eee;
+}
+
+#new-msg-box {
+  flex: 1;
+  padding: 10px;
+  border: 2px solid #000;
+  border-radius: 10px;
+  margin-right: 10px;
+}
+
+#chat-form button {
+  padding: 10px 20px;
+  background-color: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* Adjust the layout for screens */
+@media (max-width: 768px) {
+  #chat-room > div {
+    flex-direction: column;
+  }
+
+  #users-space {
+    width: 100%;
+    border-right: none;
+    border-bottom: 2px solid #000;
+  }
+}

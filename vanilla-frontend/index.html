@@ -255,18 +255,18 @@
         });
       }
 
-      function updateRoomStateButtonUI(isMember) {
-        if (isMember) {
-          roomStateButton.innerText = "Leave Room";
-          roomStateButton.className = "leave-room-btn";
-        } else {
-          roomStateButton.innerText = "Join Room";
-          roomStateButton.className = "join-room-btn";
-        }
+      // function updateRoomStateButtonUI(isMember) {
+      //   if (isMember) {
+      //     roomStateButton.innerText = "Leave Room";
+      //     roomStateButton.className = "leave-room-btn";
+      //   } else {
+      //     roomStateButton.innerText = "Join Room";
+      //     roomStateButton.className = "join-room-btn";
+      //   }
 
-        roomStateButton.disabled = false;
-        roomStateButton.style.display = "block";
-      }
+      //   roomStateButton.disabled = false;
+      //   roomStateButton.style.display = "block";
+      // }
 
       function updateActiveRoomName() {
         const activeRoomButton = document.getElementById(activeRoom.id);
@@ -288,30 +288,30 @@
         }
       }
 
-      function updateRoomStateButton() {
-        if (activeRoom.id === generalRoom.id) {
-          roomStateButton.style.display = "none";
-          return;
-        }
+      // function updateRoomStateButton() {
+      //   if (activeRoom.id === generalRoom.id) {
+      //     roomStateButton.style.display = "none";
+      //     return;
+      //   }
 
-        const currentRoom = getAllRooms().find(
-          (room) => room.id === activeRoom.id
-        );
-        if (
-          currentRoom &&
-          currentRoom.created_by &&
-          currentRoom.created_by.username === userDetails.username
-        ) {
-          roomStateButton.style.display = "none";
-          return;
-        }
+      //   const currentRoom = getAllRooms().find(
+      //     (room) => room.id === activeRoom.id
+      //   );
+      //   if (
+      //     currentRoom &&
+      //     currentRoom.created_by &&
+      //     currentRoom.created_by.username === userDetails.username
+      //   ) {
+      //     roomStateButton.style.display = "none";
+      //     return;
+      //   }
 
-        roomStateButton.innerText = "Checking...";
-        roomStateButton.disabled = true;
-        roomStateButton.style.display = "block";
+      //   roomStateButton.innerText = "Checking...";
+      //   roomStateButton.disabled = true;
+      //   roomStateButton.style.display = "block";
 
-        socket.emit("checkRoomMembership", { roomId: activeRoom.id });
-      }
+      //   socket.emit("checkRoomMembership", { roomId: activeRoom.id });
+      // }
 
       function updateCreateRoomButtonVisibility() {
         createRoomBtn.style.display = isAuth ? "flex" : "none";
@@ -377,7 +377,14 @@
         socket.emit("leaveRoom", { roomId });
       }
 
-      async function switchRoom(roomId) {
+      async function handleRoomLoad() {
+        const initialBrowserLoad = true;
+        const url = new URL(window.location);
+        const currentRoomId = url.searchParams.get("roomId") || generalRoom.id;
+        switchRoom(currentRoomId, initialBrowserLoad);
+      }
+
+      async function switchRoom(roomId, initialBrowserLoad = false) {
         if (!roomId) {
           console.error("This room has no id");
           return;
@@ -386,7 +393,7 @@
         const url = new URL(window.location);
         const currentRoomId = url.searchParams.get("roomId");
 
-        if (currentRoomId === roomId) return;
+        if (currentRoomId === roomId && !initialBrowserLoad) return;
 
         chatArea.innerHTML = "";
 
@@ -398,7 +405,7 @@
         activeRoom.id = roomId;
         updateActiveRoomName();
         highlightActiveRoomButton();
-        updateRoomStateButton();
+        // updateRoomStateButton();
       }
 
       async function initialDataFetch() {
@@ -541,31 +548,45 @@
         }
       }
 
-      async function handleRoomLoad() {
-        chatArea.innerHTML = "";
-        const url = new URL(window.location);
-        const currentRoomId = url.searchParams.get("roomId");
-
-        if (currentRoomId) {
-          activeRoom.id = currentRoomId;
-        } else if (generalRoom.id) {
-          url.searchParams.set("roomId", generalRoom.id);
-          window.history.pushState({}, "", url.toString());
-          activeRoom.id = generalRoom.id;
+      function makeContinuousTense(text) {
+        const words = text.split(" ");
+        if (words.length > 1) {
+          let verb = words[0].toLowerCase();
+          if (verb.endsWith("e") && verb !== "be") {
+            verb = verb.slice(0, -1) + "ing";
+          } else {
+            verb += "ing";
+          }
+          words[0] = verb.charAt(0).toUpperCase() + verb.slice(1);
         }
+        return words.join(" ");
+      }
 
-        socket.emit("switchToRoom", { roomId: activeRoom.id });
-        updateActiveRoomName();
-        highlightActiveRoomButton();
+      async function joinOrLeaveRoom() {
+        // check room state
+        // if in room, update the button appropriately
+        // perform the action
+
+        socket.emit("updateRoomMembership", {
+          currentRoom: {
+            id: activeRoom.id,
+          },
+        });
+
+        roomStateButton.className = "";
+        roomStateButton.textContent = makeContinuousTense(
+          roomStateButton.textContent
+        );
+        roomStateButton.disabled = true;
       }
 
       socket.on("connect", () => {
-        statusIndicatorBox.innerText += "connected!";
+        statusIndicatorBox.innerText = "connected!";
 
-        setTimeout(() => {
-          socket.emit("clientStateUpdate", { activeRoom });
-          console.log("connected");
-        }, 1000);
+        // setTimeout(() => {
+        //   socket.emit("clientStateUpdate", { activeRoom });
+        //   console.log("connected");
+        // }, 1000);
       });
 
       socket.on("userJoinedRoom", (data) => {
@@ -586,13 +607,12 @@
         }
       });
 
+      // or this can be handled with the room membership status event
       socket.on("roomLeaveSuccess", (data) => {
-        chatArea.innerHTML += `<p class="system">You have left the room</p>`;
         roomStateButton.innerText = "Join room";
         roomStateButton.disabled = false;
         roomStateButton.style.display = "block";
         roomStateButton.className = "join-room-btn";
-        scrollToBottom();
       });
 
       socket.on("userLeftRoom", (data) => {
@@ -623,11 +643,11 @@
       socket.on("tempSystemMessage", ({ message, type }) => {
         chatArea.innerHTML += `<p class="system">${message ?? ""}</p>`;
 
-        if (type === "NOT_A_MEMBER") {
-          roomStateButton.innerText = "Join Room";
-          roomStateButton.disabled = false;
-          roomStateButton.style.display = "block";
-        }
+        // if (type === "NOT_A_MEMBER") {
+        //   roomStateButton.innerText = "Join Room";
+        //   roomStateButton.disabled = false;
+        //   roomStateButton.style.display = "block";
+        // }
       });
 
       socket.on("roomPreviousMessages", (messages) => {
@@ -645,29 +665,40 @@
       });
 
       socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
-        if (roomId === activeRoom.id) {
-          updateRoomStateButtonUI(isMember);
-
-          roomStateButton.onclick = () => {
-            roomStateButton.disabled = true;
-            if (isMember) {
-              roomStateButton.innerText = "Leaving...";
-              socket.emit("leaveRoom", { roomId: activeRoom.id });
-            } else {
-              roomStateButton.innerText = "Joining...";
-              socket.emit("joinRoom", { roomId: activeRoom.id });
-            }
-          };
+        if (isMember) {
+          console.log("you are a member, showing leave button");
+          roomStateButton.innerText = "Leave room";
+          roomStateButton.className = "leave-room-btn";
+        } else {
+          console.log("you are not a member, showing join button");
+          roomStateButton.innerText = "Join room";
+          roomStateButton.className = "join-room-btn";
         }
+
+        roomStateButton.disabled = false;
+
+        //   if (roomId === activeRoom.id) {
+        //     // updateRoomStateButtonUI(isMember);
+        //     //   roomStateButton.onclick = () => {
+        //     //     roomStateButton.disabled = true;
+        //     //     if (isMember) {
+        //     //       roomStateButton.innerText = "Leaving...";
+        //     //       socket.emit("leaveRoom", { roomId: activeRoom.id });
+        //     //     } else {
+        //     //       roomStateButton.innerText = "Joining...";
+        //     //       socket.emit("joinRoom", { roomId: activeRoom.id });
+        //     //     }
+        //     //   };
+        //   }
       });
 
       socket.on("connect_error", (err) => {
-        statusIndicatorBox.innerText += "disconnected";
+        statusIndicatorBox.innerText = "connect error";
         console.error("Connection failed:", err.message);
       });
 
       socket.on("disconnect", () => {
-        statusIndicatorBox.innerText += "disconnected";
+        statusIndicatorBox.innerText = "disconnected";
         console.log("Disconnected from server.");
       });
 
@@ -682,6 +713,7 @@
       createRoomBtn.addEventListener("click", openCreateRoomModal);
       closeModalBtn.addEventListener("click", closeCreateRoomModal);
       createRoomForm.addEventListener("submit", handleCreateRoomSubmit);
+      roomStateButton.addEventListener("click", joinOrLeaveRoom);
 
       window.addEventListener("click", (event) => {
         if (event.target === createRoomModal) {

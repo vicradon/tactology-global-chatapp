@@ -17,6 +17,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Room } from '../rooms/entities/room.entity';
 import * as dotenv from 'dotenv';
+import { RoomService } from 'src/rooms/room.service';
 dotenv.config();
 
 type NewMessageDto = {
@@ -44,6 +45,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   constructor(
     private jwtService: JwtService,
     private gatewayService: GatewayService,
+    private roomService: RoomService,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
   ) {}
@@ -192,13 +194,29 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     @MessageBody() body: NewMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
-    if (client.data?.user?.sub) {
-      this.updateUserActivity(client.data.user.sub);
+    const userId = client.data?.user?.sub;
+    if (!userId) return;
+
+    this.updateUserActivity(userId);
+
+    const roomId = body.roomId;
+
+    if (!roomId) {
+      return;
     }
 
-    let roomId = body.roomId;
+    const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
 
-    if (!roomId || roomId === 'default') {
+    if (!userInRoom) {
+      client.emit(
+        'tempSystemMessage',
+        'you must join the room to see members or send messages',
+      );
+    }
+
+    /*
+    TODO: Decide on this later
+    if (!roomId) {
       try {
         const generalRoom = await this.roomRepository.findOne({
           where: { name: 'general' },
@@ -213,6 +231,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         roomId = 'default';
       }
     }
+      */
 
     const messageData = {
       username: client.data.user.username,
@@ -226,16 +245,43 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @UseGuards(WsAuthGuard)
+  @SubscribeMessage('switchToRoom')
+  async onSwitchToRoom(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+    if (!userId) return; // throw an error saying user id not here
+
+    this.updateUserActivity(client.data.user.sub);
+
+    const roomId = data.roomId;
+    const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
+
+    if (userInRoom) {
+      const messages = await this.gatewayService.getMessagesByRoom(roomId);
+      client.emit('roomPreviousMessages', messages);
+    } else {
+      client.emit(
+        'tempSystemMessage',
+        'you must join the room to see members or send messages',
+      );
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
   @SubscribeMessage('joinRoom')
   async onJoinRoom(
     @MessageBody() data: { roomId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    if (client.data?.user?.sub) {
-      this.updateUserActivity(client.data.user.sub);
-    }
+    const userId = client.data?.user?.sub;
+    if (!userId) return; // throw an error saying user id not here
+
+    this.updateUserActivity(client.data.user.sub);
 
     const roomId = data.roomId;
+    await this.roomService.joinRoom(roomId, userId);
     client.join(roomId);
     const messages = await this.gatewayService.getMessagesByRoom(roomId);
     client.emit('roomPreviousMessages', messages);

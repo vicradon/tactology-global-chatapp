@@ -21,20 +21,20 @@ export class RoomController {
 
   @Post()
   async createRoom(@Request() req, @Body() createRoomDto: CreateRoomDto) {
-    const userId = req.user.id;
+    const userId = req.user.sub;
     return this.roomService.createRoom(createRoomDto, userId);
   }
 
   @Post(':roomId/join')
   async joinRoom(@Request() req, @Param('roomId') roomId: string) {
-    const userId = req.user.id;
+    const userId = req.user.sub;
     return this.roomService.joinRoom(roomId, userId);
   }
 
   @Delete(':roomId/leave')
   @HttpCode(HttpStatus.NO_CONTENT)
   async leaveRoom(@Request() req, @Param('roomId') roomId: string) {
-    const userId = req.user.id;
+    const userId = req.user.sub;
     await this.roomService.leaveRoom(roomId, userId);
   }
 
@@ -45,13 +45,13 @@ export class RoomController {
 
   @Get('my')
   async getUserRooms(@Request() req) {
-    const userId = req.user.id;
+    const userId = req.user.sub;
     return this.roomService.getUserRooms(userId);
   }
 
   @Get('created')
   async getCreatedRooms(@Request() req) {
-    const userId = req.user.id;
+    const userId = req.user.sub;
     return this.roomService.getCreatedRooms(userId);
   }
 

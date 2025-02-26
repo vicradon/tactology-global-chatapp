@@ -7,6 +7,7 @@ import { jwtConstants } from 'src/auth/constants';
 import { Message } from './entities/message.entity';
 import { User } from 'src/users/entities/user.entity';
 import { Room } from 'src/rooms/entities/room.entity';
+import { RoomService } from 'src/rooms/room.service';
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { Room } from 'src/rooms/entities/room.entity';
       signOptions: { expiresIn: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS },
     }),
   ],
-  providers: [MyGateway, GatewayService],
+  providers: [MyGateway, GatewayService, RoomService],
   exports: [GatewayService],
 })
 export class GatewayModule {}

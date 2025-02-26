@@ -29,6 +29,14 @@ export class RoomService {
       throw new NotFoundException('User not found');
     }
 
+    const existingGeneralRoom = await this.roomRepository.findOne({
+      where: { meta: { isGeneral: true } },
+    });
+
+    if (createRoomDto.meta?.isGeneral && existingGeneralRoom) {
+      throw new BadRequestException('A general room already exists.');
+    }
+
     const room = this.roomRepository.create({
       ...createRoomDto,
       created_by: user,
@@ -98,6 +106,17 @@ export class RoomService {
     return this.roomRepository.find({
       relations: ['created_by', 'members'],
     });
+  }
+
+  async checkIfUserInRoom(roomId: string, userId: number): Promise<boolean> {
+    const count = await this.roomRepository
+      .createQueryBuilder('room')
+      .innerJoin('room.members', 'member')
+      .where('room.id = :roomId', { roomId })
+      .andWhere('member.id = :userId', { userId })
+      .getCount();
+
+    return count > 0;
   }
 
   async getRoomById(roomId: string): Promise<Room> {

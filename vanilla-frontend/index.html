@@ -24,35 +24,76 @@
         <button id="logout-button">Logout</button>
       </div>
 
-      <form id="login-form">
-        <p>Login Form</p>
-        <div>
-          <label for="username">Username</label>
-          <input
-            type="text"
-            placeholder="username"
-            name="username"
-            id="username"
-          />
+      <div id="auth-section">
+        <div id="auth-tabs">
+          <button class="tab-button active" data-target="signup-form">
+            Signup
+          </button>
+          <button class="tab-button" data-target="login-form">Login</button>
         </div>
-        <div>
-          <label for="password">Password</label>
-          <input
-            type="password"
-            name="password"
-            id="password"
-            placeholder="*****"
-          />
-        </div>
-        <button type="submit">login</button>
-      </form>
+
+        <form class="auth-form" id="signup-form">
+          <p>Signup Form</p>
+          <div>
+            <label for="username">Username</label>
+            <input
+              type="text"
+              placeholder="username"
+              name="username"
+              id="signup-username"
+            />
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input
+              type="password"
+              name="password"
+              id="signup-password"
+              placeholder="*****"
+            />
+          </div>
+          <button type="submit">Signup</button>
+        </form>
+
+        <form class="auth-form" id="login-form">
+          <p>Login Form</p>
+          <div>
+            <label for="username">Username</label>
+            <input
+              type="text"
+              placeholder="username"
+              name="username"
+              id="login-username"
+            />
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input
+              type="password"
+              name="password"
+              id="login-password"
+              placeholder="*****"
+            />
+          </div>
+          <button type="submit">login</button>
+        </form>
+      </div>
     </div>
 
     <div id="chat-room">
-      <h3>Chat Room</h3>
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        "
+      >
+        <h3 id="chat-room-name">Chat Room</h3>
+        <button id="room-state-button"></button>
+      </div>
       <div style="display: flex">
         <div id="users-space">
-          <p>Users</p>
+          <p>Online Users</p>
           <div id="users"></div>
 
           <p>Rooms</p>
@@ -77,9 +118,12 @@
 
       const apiBaseURL = "http://localhost:3500";
       const $ = (query) => document.querySelector(query);
+      const $$ = (query) => document.querySelectorAll(query);
 
       const chatForm = $("#chat-form");
+      const authSection = $("#auth-section");
       const loginForm = $("#login-form");
+      const signupForm = $("#signup-form");
       const statusIndicatorBox = $("#connection-status-box");
       const authStatusBox = $("#auth-status-box");
       const logoutButton = $("#logout-button");
@@ -87,6 +131,8 @@
 
       let isAuth = false;
       let appReady = false;
+      let generalRoom = {};
+      let activeRoom = {};
       let allUsers = [];
       let userDetails = { username: "" };
 
@@ -112,6 +158,10 @@
         }, 1000);
       });
 
+      socket.on("tempSystemMessage", (message) => {
+        chatArea.innerHTML += `<p class="system">You must join a room to send messages or see members</p>`;
+      });
+
       setInterval(() => {
         socket.emit("heartbeat");
       }, 30 * 1000);
@@ -120,6 +170,23 @@
         statusIndicatorBox.innerText + "disconnected";
         console.error("Connection failed:", err.message);
       });
+
+      const tabButtons = document.querySelectorAll(".tab-button");
+      const authForms = document.querySelectorAll(".auth-form");
+
+      tabButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          tabButtons.forEach((btn) => btn.classList.remove("active"));
+          authForms.forEach((form) => form.classList.remove("active"));
+
+          button.classList.add("active");
+          document
+            .getElementById(button.dataset.target)
+            .classList.add("active");
+        });
+      });
+
+      document.querySelector(".tab-button.active").click();
 
       function renderChatBubble(data) {
         const isCurrentUser = data.username === userDetails.username;
@@ -223,18 +290,34 @@
         const [rooms, roomsFetchError] = roomFetch;
         if (roomsFetchError) console.error(error);
 
+        generalRoom = rooms.find((room) => room?.meta?.isGeneral);
+
         rooms.forEach((room) => {
           $("#rooms").innerHTML += `
-                  <div class="room">
-                    <p>${room.name}</p>
-                  </div>
+                  <button id=${room.id} class="room">
+                    <span>${room.name}</span>
+                  </button>
                   `;
         });
       }
 
       loginForm.addEventListener("submit", handleLoginEvent);
+      signupForm.addEventListener("submit", handleSignupEvent);
       logoutButton.addEventListener("click", handleLogoutEvent);
       chatForm.addEventListener("submit", postChatMessage);
+
+      async function handleSignupEvent(event) {
+        event.preventDefault();
+        const username = signupForm["username"].value;
+        const password = signupForm["password"].value;
+        const [_, error] = await useFetch("/auth/register", "POST", {
+          username,
+          password,
+        });
+        if (error) return console.error(error);
+
+        window.location.reload();
+      }
 
       async function handleLoginEvent(event) {
         event.preventDefault();
@@ -276,7 +359,7 @@
 
         isAuth = true;
         userDetails.username = data.username;
-        loginForm.style.display = "none";
+        authSection.style.display = "none";
         authStatusBox.innerText = `Signed in as ${data.username}`;
         logoutButton.style.display = "block";
       }
@@ -289,8 +372,10 @@
           console.error("Cannot post chat message, not authenticated");
           return;
         }
+
         socket.emit("roomMessageEmit", {
           username: userDetails.username,
+          roomId: activeRoom.id,
           message: msg,
         });
 
@@ -322,10 +407,81 @@
         }
       }
 
+      function updateActiveRoomName() {
+        const activeRoomButton = document.getElementById(activeRoom.id);
+        const activeRoomName = activeRoomButton
+          ? activeRoomButton.textContent
+          : "General";
+        $("#chat-room-name").innerText =
+          `Chat Room - ${activeRoomName}`.replace(/[\n\r]+/g, " ");
+      }
+
+      function highlightActiveRoomButton() {
+        $$(".room").forEach((roomButton) => {
+          roomButton.classList.remove("active-room");
+        });
+
+        const activeRoomButton = document.getElementById(activeRoom.id);
+        if (activeRoomButton) {
+          activeRoomButton.classList.add("active-room");
+        }
+      }
+
+      async function switchRoom(roomId) {
+        if (!roomId) console.error("This room has no id");
+
+        const url = new URL(window.location);
+        const currentRoomId = url.searchParams.get("roomId");
+
+        if (currentRoomId === roomId) return;
+
+        chatArea.innerHTML = "";
+
+        if (currentRoomId !== roomId) {
+          url.searchParams.set("roomId", roomId);
+          window.history.pushState({}, "", url);
+
+          socket.emit("switchToRoom", { roomId });
+
+          activeRoom.id = roomId;
+
+          updateActiveRoomName();
+          highlightActiveRoomButton();
+        }
+      }
+
+      async function handleRoomLoad() {
+        chatArea.innerHTML = "";
+        const url = new URL(window.location);
+        const currentRoomId = url.searchParams.get("roomId");
+
+        if (currentRoomId) {
+          activeRoom.id = currentRoomId;
+        } else {
+          if (generalRoom.id) {
+            url.searchParams.set("roomId", generalRoom.id);
+            window.history.pushState({}, "", url.toString());
+            activeRoom.id = generalRoom.id;
+          }
+        }
+        socket.emit("switchToRoom", { roomId: activeRoom.id });
+
+        updateActiveRoomName();
+        highlightActiveRoomButton();
+      }
+
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
         await initialDataFetch();
         socket.emit("getOnlineUsersUpdate");
+
+        handleRoomLoad();
+
+        $$(".room").forEach((room) => {
+          room.addEventListener("click", ({ target }) => {
+            switchRoom(target.id);
+          });
+        });
 
         appReady = true;
       });

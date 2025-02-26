@@ -41,4 +41,7 @@ export class Room {
     },
   })
   members: User[];
+
+  @Column({ type: 'jsonb', nullable: true }) // pgsql
+  meta: Record<string, any>;
 }

@@ -40,7 +40,33 @@ body {
   cursor: pointer;
 }
 
-#login-form {
+#auth-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tab-button {
+  padding: 10px;
+  border: none;
+  background: #f1f1f1;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  background: #007bff;
+  color: white;
+}
+
+.auth-form {
+  display: none;
+}
+
+.auth-form.active {
+  display: block;
+}
+
+.auth-form {
   margin-bottom: 20px;
   padding: 20px;
   border: 1px solid #ddd;
@@ -48,28 +74,28 @@ body {
   background-color: #fff;
 }
 
-#login-form p {
+.auth-form p {
   font-weight: bold;
   margin-bottom: 10px;
 }
 
-#login-form div {
+.auth-form div {
   margin-bottom: 15px;
 }
 
-#login-form label {
+.auth-form label {
   display: block;
   margin-bottom: 5px;
 }
 
-#login-form input {
+.auth-form input {
   width: 100%;
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 5px;
 }
 
-#login-form button {
+.auth-form button {
   padding: 8px 15px;
   background-color: #007bff;
   color: white;
@@ -109,11 +135,23 @@ body {
   gap: 10px;
 }
 
-
 #rooms {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.room {
+  cursor: pointer;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.active-room {
+  background-color: #007bff;
+  border-color: #007bff;
+  color: white;
+  border-radius: 5px;
 }
 
 .user {

@@ -52,6 +52,7 @@ export class SeedService implements OnModuleInit {
           created_by: systemUser,
           created_by_id: systemUser.id,
           members: [systemUser],
+          meta: { isGeneral: true },
         });
 
         await this.roomRepository.save(generalRoom);

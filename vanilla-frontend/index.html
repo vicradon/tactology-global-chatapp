@@ -140,7 +140,12 @@
     <script type="module">
       import { io } from "socket.io-client";
 
-      const apiBaseURL = "https://dachatapp.onrender.com";
+      const isLocalhost = ["localhost", "127.0.0.1"].includes(
+        window.location.hostname
+      );
+      const apiBaseURL = isLocalhost
+        ? "http://localhost:3500"
+        : "https://dachatapp.onrender.com";
 
       const $ = (query) => document.querySelector(query);
       const $$ = (query) => document.querySelectorAll(query);
@@ -168,7 +173,7 @@
       let allUsers = [];
       let userDetails = { username: "" };
 
-      const socket = io("http://localhost:3500/", {
+      const socket = io(apiBaseURL, {
         reconnectionDelayMax: 10000,
         withCredentials: true,
       });
@@ -186,7 +191,7 @@
         method = "GET",
         body = null,
         headers = {},
-        baseURL = "http://localhost:3500"
+        baseURL = apiBaseURL
       ) => {
         try {
           const options = {

@@ -96,7 +96,11 @@
           <p>Online Users</p>
           <div id="users"></div>
 
-          <p>Rooms</p>
+          <div class="rooms-header">
+            <p>Rooms</p>
+            <button id="create-room-btn" class="create-room-btn">+</button>
+          </div>
+
           <div id="rooms"></div>
         </div>
         <div id="chat-area"></div>
@@ -111,6 +115,27 @@
         />
         <button type="submit">send</button>
       </form>
+    </div>
+
+    <div id="create-room-modal" class="modal">
+      <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Create New Room</h3>
+        <form id="create-room-form">
+          <div>
+            <label for="room-name">Room Name</label>
+            <input
+              type="text"
+              id="room-name"
+              name="room-name"
+              required
+              minlength="3"
+              maxlength="30"
+            />
+          </div>
+          <button type="submit">Create Room</button>
+        </form>
+      </div>
     </div>
 
     <script type="module">
@@ -128,6 +153,11 @@
       const authStatusBox = $("#auth-status-box");
       const logoutButton = $("#logout-button");
       const chatArea = $("#chat-area");
+      const roomStateButton = $("#room-state-button");
+      const createRoomBtn = $("#create-room-btn");
+      const createRoomModal = $("#create-room-modal");
+      const closeModalBtn = $(".close-modal");
+      const createRoomForm = $("#create-room-form");
 
       let isAuth = false;
       let appReady = false;
@@ -143,7 +173,60 @@
 
       socket.on("connect", () => {
         statusIndicatorBox.innerText + "connected!";
-        console.log("connected");
+
+        setTimeout(() => {
+          socket.emit("clientStateUpdate", {
+            activeRoom,
+          });
+          console.log("connected");
+        }, 1000);
+      });
+
+      socket.on("userJoinedRoom", (data) => {
+        const { username, roomId } = data;
+        if (roomId === activeRoom.id) {
+          chatArea.innerHTML += `<p class="system">${username} joined the room</p>`;
+          scrollToBottom();
+        }
+      });
+
+      socket.on("roomJoinSuccess", (data) => {
+        const { roomId } = data;
+        if (roomId === activeRoom.id) {
+          roomStateButton.innerText = "Leave room";
+          roomStateButton.className = "leave-room-btn";
+
+          roomStateButton.disabled = false;
+          roomStateButton.style.display = "block";
+        }
+      });
+
+      socket.on("roomLeaveSuccess", (data) => {
+        const { roomId } = data;
+
+        // if (roomId === activeRoom.id) {
+        //   switchRoom(generalRoom.id);
+        // }
+
+        chatArea.innerHTML += `<p class="system">You have left the room</p>`;
+        roomStateButton.innerText = "Join room";
+        roomStateButton.disabled = false;
+        roomStateButton.style.display = "block";
+        roomStateButton.className = "join-room-btn";
+        scrollToBottom();
+      });
+
+      socket.on("userLeftRoom", (data) => {
+        const { username, roomId } = data;
+        if (roomId === activeRoom.id) {
+          chatArea.innerHTML += `<p class="system">${username} has left the room</p>`;
+          scrollToBottom();
+        }
+      });
+
+      socket.on("newRoomCreated", (room) => {
+        console.log("New room created:", room);
+        addRoomToUI(room);
       });
 
       socket.on("onlineUsersUpdate", (onlineUsers) => {
@@ -158,8 +241,15 @@
         }, 1000);
       });
 
-      socket.on("tempSystemMessage", (message) => {
-        chatArea.innerHTML += `<p class="system">You must join a room to send messages or see members</p>`;
+      socket.on("tempSystemMessage", ({ message, type }) => {
+        chatArea.innerHTML += `<p class="system">${message ?? ""}</p>`;
+
+        if (type === "NOT_A_MEMBER") {
+          const roomStateButton = $("#room-state-button");
+          roomStateButton.innerText = "Join Room";
+          roomStateButton.disabled = false;
+          roomStateButton.style.display = "block";
+        }
       });
 
       setInterval(() => {
@@ -213,8 +303,29 @@
       });
 
       socket.on("roomMessageBroadcast", (msg) => {
+        console.log("new room message", msg);
         chatArea.innerHTML += renderChatBubble(msg);
         scrollToBottom();
+      });
+
+      socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
+        if (roomId === activeRoom.id) {
+          const roomStateButton = $("#room-state-button");
+
+          updateRoomStateButtonUI(isMember);
+
+          // Set the click handler based on the server's actual membership status
+          roomStateButton.onclick = () => {
+            roomStateButton.disabled = true;
+            if (isMember) {
+              roomStateButton.innerText = "Leaving...";
+              socket.emit("leaveRoom", { roomId: activeRoom.id });
+            } else {
+              roomStateButton.innerText = "Joining...";
+              socket.emit("joinRoom", { roomId: activeRoom.id });
+            }
+          };
+        }
       });
 
       socket.on("disconnect", () => {
@@ -282,22 +393,23 @@
         ]);
 
         const [users, usersError] = userFetch;
-        if (usersError) console.error(error);
+        if (usersError) console.error(usersError);
 
         allUsers = users.filter((user) => user.username !== "system");
         renderUsers(allUsers);
 
         const [rooms, roomsFetchError] = roomFetch;
-        if (roomsFetchError) console.error(error);
+        if (roomsFetchError) console.error(roomsFetchError);
 
         generalRoom = rooms.find((room) => room?.meta?.isGeneral);
 
         rooms.forEach((room) => {
           $("#rooms").innerHTML += `
-                  <button id=${room.id} class="room">
-                    <span>${room.name}</span>
-                  </button>
-                  `;
+            <button id=${room.id} class="room" 
+              data-created-by="${room.created_by?.username || ""}">
+              <span>${room.name}</span>
+            </button>
+            `;
         });
       }
 
@@ -354,6 +466,8 @@
           console.log(`An error occured: ${error}`);
           authStatusBox.innerText = "Not signed in";
           logoutButton.style.display = "none";
+          isAuth = false;
+          updateCreateRoomButtonVisibility();
           return;
         }
 
@@ -362,6 +476,7 @@
         authSection.style.display = "none";
         authStatusBox.innerText = `Signed in as ${data.username}`;
         logoutButton.style.display = "block";
+        updateCreateRoomButtonVisibility();
       }
 
       async function postChatMessage(event) {
@@ -407,6 +522,109 @@
         }
       }
 
+      createRoomBtn.addEventListener("click", openCreateRoomModal);
+      closeModalBtn.addEventListener("click", closeCreateRoomModal);
+      window.addEventListener("click", (event) => {
+        if (event.target === createRoomModal) {
+          closeCreateRoomModal();
+        }
+      });
+      createRoomForm.addEventListener("submit", handleCreateRoomSubmit);
+
+      // Add these functions for modal control
+      function openCreateRoomModal() {
+        createRoomModal.style.display = "block";
+      }
+
+      function closeCreateRoomModal() {
+        createRoomModal.style.display = "none";
+        createRoomForm.reset();
+      }
+
+      function updateRoomStateButtonUI(isMember) {
+        const roomStateButton = $("#room-state-button");
+
+        if (isMember) {
+          roomStateButton.innerText = "Leave Room";
+          roomStateButton.className = "leave-room-btn";
+        } else {
+          roomStateButton.innerText = "Join Room";
+          roomStateButton.className = "join-room-btn";
+        }
+
+        roomStateButton.disabled = false;
+        roomStateButton.style.display = "block";
+      }
+
+      // Function to handle room creation
+      async function handleCreateRoomSubmit(event) {
+        event.preventDefault();
+
+        const roomName = createRoomForm["room-name"].value.trim();
+
+        if (!roomName || roomName.length < 3) {
+          alert("Room name must be at least 3 characters");
+          return;
+        }
+
+        try {
+          const [data, error] = await useFetch("/rooms", "POST", {
+            name: roomName,
+          });
+
+          if (error) {
+            console.error("Error creating room:", error);
+            alert("Failed to create room. Please try again.");
+            return;
+          }
+
+          // Close the modal
+          closeCreateRoomModal();
+
+          // Emit event to notify server about new room
+          socket.emit("roomCreated", { room: data });
+
+          // Add the room to the UI immediately for the creator
+          addRoomToUI(data);
+
+          // Switch to the newly created room
+          switchRoom(data.id);
+        } catch (error) {
+          console.error("Error in room creation:", error);
+          alert("An unexpected error occurred. Please try again.");
+        }
+      }
+
+      function addRoomToUI(room) {
+        if (document.getElementById(room.id)) {
+          return;
+        }
+
+        const roomElement = document.createElement("button");
+        roomElement.id = room.id;
+        roomElement.className = "room";
+        roomElement.setAttribute(
+          "data-created-by",
+          room.created_by?.username || userDetails.username
+        );
+
+        const roomNameSpan = document.createElement("span");
+        roomNameSpan.textContent = room.name;
+
+        roomElement.appendChild(roomNameSpan);
+
+        // Add click event to the new room button
+        roomElement.addEventListener("click", (event) => {
+          let button = event.target;
+          if (button.tagName !== "BUTTON") {
+            button = button.closest("button");
+          }
+          switchRoom(button.id);
+        });
+
+        $("#rooms").appendChild(roomElement);
+      }
+
       function updateActiveRoomName() {
         const activeRoomButton = document.getElementById(activeRoom.id);
         const activeRoomName = activeRoomButton
@@ -441,13 +659,69 @@
           url.searchParams.set("roomId", roomId);
           window.history.pushState({}, "", url);
 
+          // First try to switch to the room
           socket.emit("switchToRoom", { roomId });
 
           activeRoom.id = roomId;
-
           updateActiveRoomName();
           highlightActiveRoomButton();
+          updateRoomStateButton();
         }
+      }
+
+      function updateRoomStateButton() {
+        const roomStateButton = $("#room-state-button");
+
+        // Check if this is the general room (can't leave)
+        if (activeRoom.id === generalRoom.id) {
+          roomStateButton.style.display = "none";
+          return;
+        }
+
+        // Check if user is the creator of this room (can't leave)
+        const currentRoom = getAllRooms().find(
+          (room) => room.id === activeRoom.id
+        );
+        if (
+          currentRoom &&
+          currentRoom.created_by &&
+          currentRoom.created_by.username === userDetails.username
+        ) {
+          roomStateButton.style.display = "none";
+          return;
+        }
+
+        // Show loading state while checking membership
+        roomStateButton.innerText = "Checking...";
+        roomStateButton.disabled = true;
+        roomStateButton.style.display = "block";
+
+        // Always check with the server for the actual membership status
+        socket.emit("checkRoomMembership", { roomId: activeRoom.id });
+      }
+
+      function getAllRooms() {
+        return Array.from($$(".room")).map((roomElem) => {
+          return {
+            id: roomElem.id,
+            name: roomElem.textContent.trim(),
+            created_by: {
+              username: roomElem.dataset.createdBy,
+            },
+          };
+        });
+      }
+
+      function joinRoom(roomId) {
+        // We no longer need these as they're handled in the click handler
+        // When the server confirms joining, it'll send a roomJoinSuccess event
+        socket.emit("joinRoom", { roomId });
+      }
+
+      function leaveRoom(roomId) {
+        // We no longer need these as they're handled in the click handler
+        // When the server confirms leaving, it'll send a roomLeaveSuccess event
+        socket.emit("leaveRoom", { roomId });
       }
 
       async function handleRoomLoad() {
@@ -470,16 +744,30 @@
         highlightActiveRoomButton();
       }
 
+      function updateCreateRoomButtonVisibility() {
+        if (isAuth) {
+          createRoomBtn.style.display = "flex";
+        } else {
+          createRoomBtn.style.display = "none";
+        }
+      }
+
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
         await initialDataFetch();
         socket.emit("getOnlineUsersUpdate");
 
         handleRoomLoad();
+        updateCreateRoomButtonVisibility();
 
         $$(".room").forEach((room) => {
-          room.addEventListener("click", ({ target }) => {
-            switchRoom(target.id);
+          room.addEventListener("click", (event) => {
+            let button = event.target;
+
+            if (button.tagName !== "BUTTON") {
+              button = button.closest("button");
+            }
+            switchRoom(button.id);
           });
         });
 

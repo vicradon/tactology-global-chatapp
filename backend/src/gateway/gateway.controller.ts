@@ -64,7 +64,15 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         const username = socket.data.user.username;
 
         this.addOnlineUser(userId, username, socket.id);
+        await this.joinUserToTheirRooms(userId, socket);
         this.broadcastOnlineUsers();
+      } catch (error) {
+        console.error('Error in connection handler:', error);
+        const messages = await this.gatewayService.getAllMessages();
+        socket.emit('roomPreviousMessages', messages);
+      }
+
+      /*
 
         const generalRoom = await this.roomRepository.findOne({
           where: { name: 'general' },
@@ -88,12 +96,45 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         }
 
         this.server.emit('newUserJoined', 'a new user joined');
-      } catch (error) {
-        console.error('Error in connection handler:', error);
-        const messages = await this.gatewayService.getAllMessages();
-        socket.emit('roomPreviousMessages', messages);
-      }
+   
+        */
     });
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('clientStateUpdate')
+  async clientStateUpdate(
+    @MessageBody() body: { activeRoom: { id: string } },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+
+    if (!userId) {
+      client.emit('tempSystemMessage', {
+        message: 'no user id',
+        type: 'NO_USER_ID',
+      });
+      return;
+    }
+
+    const userInRoom = await this.roomService.checkIfUserInRoom(
+      body.activeRoom.id,
+      userId,
+    );
+
+    if (!userInRoom) {
+      client.emit('tempSystemMessage', {
+        message: 'you must join the room to send messages',
+        type: 'NOT_A_MEMBER',
+      });
+
+      return;
+    }
+
+    const messages = await this.gatewayService.getMessagesByRoom(
+      body.activeRoom.id,
+    );
+    client.emit('roomPreviousMessages', messages);
   }
 
   handleDisconnect(socket: Socket) {
@@ -208,30 +249,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
 
     if (!userInRoom) {
-      client.emit(
-        'tempSystemMessage',
-        'you must join the room to see members or send messages',
-      );
+      client.emit('tempSystemMessage', {
+        message: 'you must join the room to send messages',
+      });
     }
-
-    /*
-    TODO: Decide on this later
-    if (!roomId) {
-      try {
-        const generalRoom = await this.roomRepository.findOne({
-          where: { name: 'general' },
-        });
-        if (generalRoom) {
-          roomId = generalRoom.id;
-        } else {
-          roomId = 'default';
-        }
-      } catch (error) {
-        console.error('Error finding general room:', error);
-        roomId = 'default';
-      }
-    }
-      */
 
     const messageData = {
       username: client.data.user.username,
@@ -240,32 +261,18 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       roomId,
     };
 
+    console.log(messageData);
+
     const savedMessage = await this.gatewayService.saveMessage(messageData);
     this.server.to(roomId).emit('roomMessageBroadcast', savedMessage);
   }
 
-  @UseGuards(WsAuthGuard)
-  @SubscribeMessage('switchToRoom')
-  async onSwitchToRoom(
-    @MessageBody() data: { roomId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const userId = client.data?.user?.sub;
-    if (!userId) return; // throw an error saying user id not here
+  private async joinUserToTheirRooms(userId: number, client: Socket) {
+    const userRooms = await this.roomService.getUserRooms(userId);
 
-    this.updateUserActivity(client.data.user.sub);
-
-    const roomId = data.roomId;
-    const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
-
-    if (userInRoom) {
-      const messages = await this.gatewayService.getMessagesByRoom(roomId);
-      client.emit('roomPreviousMessages', messages);
-    } else {
-      client.emit(
-        'tempSystemMessage',
-        'you must join the room to see members or send messages',
-      );
+    for (const room of userRooms) {
+      client.join(room.id);
+      console.log(`User ${userId} joined room ${room.id}`);
     }
   }
 
@@ -276,20 +283,183 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     const userId = client.data?.user?.sub;
-    if (!userId) return; // throw an error saying user id not here
+    if (!userId) return;
 
-    this.updateUserActivity(client.data.user.sub);
+    this.updateUserActivity(userId);
+
+    try {
+      // Check if user is already in the room
+      const isInRoom = await this.roomService.checkIfUserInRoom(
+        data.roomId,
+        userId,
+      );
+
+      if (isInRoom) {
+        client.emit('tempSystemMessage', {
+          message: 'You are already a member of this room',
+          type: 'ALREADY_A_MEMBER',
+        });
+        client.emit('roomJoinSuccess', { roomId: data.roomId });
+        return;
+      }
+
+      // Join in database
+      await this.roomService.joinRoom(data.roomId, userId);
+
+      // Join in Socket.IO
+      client.join(data.roomId);
+      console.log(
+        `User ${userId} joined room ${data.roomId} via joinRoom event`,
+      );
+
+      // Notify user of success
+      client.emit('roomJoinSuccess', { roomId: data.roomId });
+
+      // Fetch messages and send to client
+      const messages = await this.gatewayService.getMessagesByRoom(data.roomId);
+      client.emit('roomPreviousMessages', messages);
+
+      // Notify others in the room
+      client.to(data.roomId).emit('userJoinedRoom', {
+        username: client.data.user.username,
+        roomId: data.roomId,
+      });
+    } catch (error) {
+      console.error(`Error joining room: ${error.message}`);
+      client.emit('tempSystemMessage', {
+        message: `Error joining room: ${error.message}`,
+        type: 'UNKNOWN',
+      });
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('switchToRoom')
+  async onSwitchToRoom(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+    if (!userId) return;
+
+    this.updateUserActivity(userId);
 
     const roomId = data.roomId;
-    await this.roomService.joinRoom(roomId, userId);
-    client.join(roomId);
-    const messages = await this.gatewayService.getMessagesByRoom(roomId);
-    client.emit('roomPreviousMessages', messages);
+    const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
 
-    client.to(roomId).emit('userJoinedRoom', {
-      username: client.data.user.username,
-      roomId,
-    });
+    if (userInRoom) {
+      // Explicitly join the socket.io room
+      client.join(roomId);
+      const messages = await this.gatewayService.getMessagesByRoom(roomId);
+      client.emit('roomPreviousMessages', messages);
+      client.emit('roomMembershipStatus', { roomId, isMember: true });
+    } else {
+      // Clear messages but inform user they need to join
+      client.emit('roomPreviousMessages', []);
+      client.emit('tempSystemMessage', {
+        message: 'You must join the room to see messages or send messages',
+        type: 'NOT_A_MEMBER',
+      });
+      client.emit('roomMembershipStatus', { roomId, isMember: false });
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('leaveRoom')
+  async onLeaveRoom(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+    if (!userId) return;
+
+    this.updateUserActivity(userId);
+
+    try {
+      // Check if room is general
+      const room = await this.roomService.getRoomById(data.roomId);
+      if (room.meta?.isGeneral) {
+        client.emit('tempSystemMessage', {
+          message: 'You cannot leave the general room',
+          type: 'CANNOT_LEAVE_GENERAL',
+        });
+        return;
+      }
+
+      // Check if user is the creator
+      if (room.created_by_id === userId) {
+        client.emit('tempSystemMessage', {
+          message: 'Room creators cannot leave their own rooms',
+          type: 'CANNOT_LEAVE_OWN_ROOM',
+        });
+        return;
+      }
+
+      // Leave in database
+      await this.roomService.leaveRoom(data.roomId, userId);
+
+      // Leave in Socket.IO
+      client.leave(data.roomId);
+      console.log(`User ${userId} left room ${data.roomId}`);
+
+      // Notify user of success
+      client.emit('roomLeaveSuccess', { roomId: data.roomId });
+
+      // Notify others in the room
+      client.to(data.roomId).emit('userLeftRoom', {
+        username: client.data.user.username,
+        roomId: data.roomId,
+      });
+    } catch (error) {
+      console.error(`Error leaving room: ${error.message}`);
+      client.emit('tempSystemMessage', {
+        message: `Error leaving room: ${error.message}`,
+        type: 'ERROR',
+      });
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('checkRoomMembership')
+  async onCheckRoomMembership(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+    if (!userId) return;
+
+    try {
+      const isMember = await this.roomService.checkIfUserInRoom(
+        data.roomId,
+        userId,
+      );
+      client.emit('roomMembershipStatus', {
+        roomId: data.roomId,
+        isMember,
+      });
+    } catch (error) {
+      console.error(`Error checking room membership: ${error.message}`);
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('roomCreated')
+  async onRoomCreated(
+    @MessageBody() data: { room: Room },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data?.user?.sub;
+    if (!userId) return;
+
+    this.updateUserActivity(userId);
+
+    // Broadcast the new room to all connected clients
+    this.server.emit('newRoomCreated', data.room);
+
+    // Log the event
+    console.log(
+      `User ${userId} created a new room: ${data.room.name} (${data.room.id})`,
+    );
   }
 
   @UseGuards(WsAuthGuard)

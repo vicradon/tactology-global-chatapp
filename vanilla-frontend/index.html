@@ -140,12 +140,7 @@
     <script type="module">
       import { io } from "socket.io-client";
 
-      const isLocalhost = ["localhost", "127.0.0.1"].includes(
-        window.location.hostname
-      );
-      const apiBaseURL = isLocalhost
-        ? "http://localhost:3500"
-        : "https://dachatapp.onrender.com";
+      const apiBaseURL = "https://dachatapp.onrender.com";
 
       const $ = (query) => document.querySelector(query);
       const $$ = (query) => document.querySelectorAll(query);

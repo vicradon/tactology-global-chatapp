@@ -13,8 +13,6 @@ import { Server, Socket } from 'socket.io';
 import { jwtConstants } from 'src/auth/constants';
 import { WsAuthGuard } from './gateway.auth.guard';
 import { GatewayService } from './gateway.service';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Room } from '../rooms/entities/room.entity';
 import * as dotenv from 'dotenv';
 import { RoomService } from 'src/rooms/room.service';
@@ -46,8 +44,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     private jwtService: JwtService,
     private gatewayService: GatewayService,
     private roomService: RoomService,
-    @InjectRepository(Room)
-    private roomRepository: Repository<Room>,
   ) {}
 
   @WebSocketServer()
@@ -71,33 +67,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         const messages = await this.gatewayService.getAllMessages();
         socket.emit('roomPreviousMessages', messages);
       }
-
-      /*
-
-        const generalRoom = await this.roomRepository.findOne({
-          where: { name: 'general' },
-        });
-
-        if (generalRoom) {
-          socket.join(generalRoom.id);
-
-          const messages = await this.gatewayService.getMessagesByRoom(
-            generalRoom.id,
-          );
-          socket.emit('roomPreviousMessages', messages);
-
-          socket.to(generalRoom.id).emit('userJoinedRoom', {
-            username: socket.data.user.username,
-            roomId: generalRoom.id,
-          });
-        } else {
-          const messages = await this.gatewayService.getAllMessages();
-          socket.emit('roomPreviousMessages', messages);
-        }
-
-        this.server.emit('newUserJoined', 'a new user joined');
-   
-        */
     });
   }
 
@@ -288,7 +257,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.updateUserActivity(userId);
 
     try {
-      // Check if user is already in the room
       const isInRoom = await this.roomService.checkIfUserInRoom(
         data.roomId,
         userId,
@@ -303,23 +271,18 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         return;
       }
 
-      // Join in database
       await this.roomService.joinRoom(data.roomId, userId);
 
-      // Join in Socket.IO
       client.join(data.roomId);
       console.log(
         `User ${userId} joined room ${data.roomId} via joinRoom event`,
       );
 
-      // Notify user of success
       client.emit('roomJoinSuccess', { roomId: data.roomId });
 
-      // Fetch messages and send to client
       const messages = await this.gatewayService.getMessagesByRoom(data.roomId);
       client.emit('roomPreviousMessages', messages);
 
-      // Notify others in the room
       client.to(data.roomId).emit('userJoinedRoom', {
         username: client.data.user.username,
         roomId: data.roomId,
@@ -348,13 +311,11 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     const userInRoom = await this.roomService.checkIfUserInRoom(roomId, userId);
 
     if (userInRoom) {
-      // Explicitly join the socket.io room
       client.join(roomId);
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
       client.emit('roomPreviousMessages', messages);
       client.emit('roomMembershipStatus', { roomId, isMember: true });
     } else {
-      // Clear messages but inform user they need to join
       client.emit('roomPreviousMessages', []);
       client.emit('tempSystemMessage', {
         message: 'You must join the room to see messages or send messages',
@@ -376,7 +337,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.updateUserActivity(userId);
 
     try {
-      // Check if room is general
       const room = await this.roomService.getRoomById(data.roomId);
       if (room.meta?.isGeneral) {
         client.emit('tempSystemMessage', {
@@ -386,7 +346,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         return;
       }
 
-      // Check if user is the creator
       if (room.created_by_id === userId) {
         client.emit('tempSystemMessage', {
           message: 'Room creators cannot leave their own rooms',
@@ -395,17 +354,13 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         return;
       }
 
-      // Leave in database
       await this.roomService.leaveRoom(data.roomId, userId);
 
-      // Leave in Socket.IO
       client.leave(data.roomId);
       console.log(`User ${userId} left room ${data.roomId}`);
 
-      // Notify user of success
       client.emit('roomLeaveSuccess', { roomId: data.roomId });
 
-      // Notify others in the room
       client.to(data.roomId).emit('userLeftRoom', {
         username: client.data.user.username,
         roomId: data.roomId,
@@ -453,10 +408,8 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
 
     this.updateUserActivity(userId);
 
-    // Broadcast the new room to all connected clients
     this.server.emit('newRoomCreated', data.room);
 
-    // Log the event
     console.log(
       `User ${userId} created a new room: ${data.room.name} (${data.room.id})`,
     );

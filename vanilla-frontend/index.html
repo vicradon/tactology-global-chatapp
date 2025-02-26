@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Socket IO Test</title>
     <link rel="stylesheet" href="styles.css" />
-
     <script type="importmap">
       {
         "imports": {
@@ -171,13 +170,400 @@
         withCredentials: true,
       });
 
+      /**
+       * Fetch wrapper function
+       * @param {string} endpoint - The endpoint to fetch data from.
+       * @param {"GET" | "POST" | "PUT" | "DELETE"} [method="GET"] - HTTP method.
+       * @param {Object} [body=null] - Request body for POST/PUT requests.
+       * @param {Object} [headers={}] - Additional headers.
+       * @returns {Promise<[any, Error|null]>} - Returns a tuple [data, error].
+       */
+      const useFetch = async (
+        endpoint,
+        method = "GET",
+        body = null,
+        headers = {},
+        baseURL = "http://localhost:3500"
+      ) => {
+        try {
+          const options = {
+            method,
+            headers: { "Content-Type": "application/json", ...headers },
+            body: body ? JSON.stringify(body) : null,
+            credentials: "include",
+          };
+
+          const response = await fetch(`${baseURL}${endpoint}`, options);
+          if (!response.ok)
+            throw new Error(`${response.status} - ${response.statusText}`);
+          return [await response.json(), null];
+        } catch (error) {
+          return [null, error];
+        }
+      };
+
+      function scrollToBottom() {
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+
+      function convertToLocalTime(utcTimestamp) {
+        try {
+          const utcDate = new Date(utcTimestamp);
+
+          if (isNaN(utcDate)) {
+            throw new Error("Invalid UTC timestamp");
+          }
+
+          const localTime = utcDate.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          });
+
+          return localTime;
+        } catch (error) {
+          console.error("Error converting time:", error.message);
+          return null;
+        }
+      }
+
+      function renderChatBubble(data) {
+        const isCurrentUser = data.username === userDetails.username;
+
+        return `
+    <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
+      <p class="chat-bubble-username">~${data.username}</p>
+      <div class="chat-bubble-chatdata">
+        <p class="chat-bubble-message">${data.message}</p>
+        <p class="chat-bubble-timestamp">${convertToLocalTime(
+          data.timestamp
+        )}</p>
+      </div>
+    </div>
+  `;
+      }
+
+      function getAllRooms() {
+        return Array.from($$(".room")).map((roomElem) => {
+          return {
+            id: roomElem.id,
+            name: roomElem.textContent.trim(),
+            created_by: {
+              username: roomElem.dataset.createdBy,
+            },
+          };
+        });
+      }
+
+      function updateRoomStateButtonUI(isMember) {
+        if (isMember) {
+          roomStateButton.innerText = "Leave Room";
+          roomStateButton.className = "leave-room-btn";
+        } else {
+          roomStateButton.innerText = "Join Room";
+          roomStateButton.className = "join-room-btn";
+        }
+
+        roomStateButton.disabled = false;
+        roomStateButton.style.display = "block";
+      }
+
+      function updateActiveRoomName() {
+        const activeRoomButton = document.getElementById(activeRoom.id);
+        const activeRoomName = activeRoomButton
+          ? activeRoomButton.textContent
+          : "General";
+        $("#chat-room-name").innerText =
+          `Chat Room - ${activeRoomName}`.replace(/[\n\r]+/g, " ");
+      }
+
+      function highlightActiveRoomButton() {
+        $$(".room").forEach((roomButton) => {
+          roomButton.classList.remove("active-room");
+        });
+
+        const activeRoomButton = document.getElementById(activeRoom.id);
+        if (activeRoomButton) {
+          activeRoomButton.classList.add("active-room");
+        }
+      }
+
+      function updateRoomStateButton() {
+        if (activeRoom.id === generalRoom.id) {
+          roomStateButton.style.display = "none";
+          return;
+        }
+
+        const currentRoom = getAllRooms().find(
+          (room) => room.id === activeRoom.id
+        );
+        if (
+          currentRoom &&
+          currentRoom.created_by &&
+          currentRoom.created_by.username === userDetails.username
+        ) {
+          roomStateButton.style.display = "none";
+          return;
+        }
+
+        roomStateButton.innerText = "Checking...";
+        roomStateButton.disabled = true;
+        roomStateButton.style.display = "block";
+
+        socket.emit("checkRoomMembership", { roomId: activeRoom.id });
+      }
+
+      function updateCreateRoomButtonVisibility() {
+        createRoomBtn.style.display = isAuth ? "flex" : "none";
+      }
+
+      async function renderUsers(users) {
+        $("#users").innerHTML = "";
+        users.forEach((user) => {
+          let baseClass = "user-status-indicator ";
+          baseClass += user.isOnline ? "user-is-online" : "user-is-offline";
+
+          $("#users").innerHTML += `
+      <div class="user">
+        <span class="${baseClass}"></span><p>${user.username}</p>
+      </div>
+    `;
+        });
+      }
+
+      function addRoomToUI(room) {
+        if (document.getElementById(room.id)) {
+          return;
+        }
+
+        const roomElement = document.createElement("button");
+        roomElement.id = room.id;
+        roomElement.className = "room";
+        roomElement.setAttribute(
+          "data-created-by",
+          room.created_by?.username || userDetails.username
+        );
+
+        const roomNameSpan = document.createElement("span");
+        roomNameSpan.textContent = room.name;
+
+        roomElement.appendChild(roomNameSpan);
+
+        roomElement.addEventListener("click", (event) => {
+          let button = event.target;
+          if (button.tagName !== "BUTTON") {
+            button = button.closest("button");
+          }
+          switchRoom(button.id);
+        });
+
+        $("#rooms").appendChild(roomElement);
+      }
+
+      function openCreateRoomModal() {
+        createRoomModal.style.display = "block";
+      }
+
+      function closeCreateRoomModal() {
+        createRoomModal.style.display = "none";
+        createRoomForm.reset();
+      }
+
+      function joinRoom(roomId) {
+        socket.emit("joinRoom", { roomId });
+      }
+
+      function leaveRoom(roomId) {
+        socket.emit("leaveRoom", { roomId });
+      }
+
+      async function switchRoom(roomId) {
+        if (!roomId) {
+          console.error("This room has no id");
+          return;
+        }
+
+        const url = new URL(window.location);
+        const currentRoomId = url.searchParams.get("roomId");
+
+        if (currentRoomId === roomId) return;
+
+        chatArea.innerHTML = "";
+
+        url.searchParams.set("roomId", roomId);
+        window.history.pushState({}, "", url);
+
+        socket.emit("switchToRoom", { roomId });
+
+        activeRoom.id = roomId;
+        updateActiveRoomName();
+        highlightActiveRoomButton();
+        updateRoomStateButton();
+      }
+
+      async function initialDataFetch() {
+        const usersFetchReq = useFetch("/users");
+        const roomsFetchReq = useFetch("/rooms");
+
+        const [userFetch, roomFetch] = await Promise.all([
+          usersFetchReq,
+          roomsFetchReq,
+        ]);
+
+        const [users, usersError] = userFetch;
+        if (usersError) console.error(usersError);
+
+        allUsers = users.filter((user) => user.username !== "system");
+        renderUsers(allUsers);
+
+        const [rooms, roomsFetchError] = roomFetch;
+        if (roomsFetchError) console.error(roomsFetchError);
+
+        generalRoom = rooms.find((room) => room?.meta?.isGeneral);
+
+        rooms.forEach((room) => {
+          $("#rooms").innerHTML += `
+      <button id=${room.id} class="room" 
+        data-created-by="${room.created_by?.username || ""}">
+        <span>${room.name}</span>
+      </button>
+    `;
+        });
+      }
+
+      async function fetchUserProfile() {
+        const [data, error] = await useFetch("/auth/profile");
+
+        if (error) {
+          console.log(`An error occured: ${error}`);
+          authStatusBox.innerText = "Not signed in";
+          logoutButton.style.display = "none";
+          isAuth = false;
+          updateCreateRoomButtonVisibility();
+          return;
+        }
+
+        isAuth = true;
+        userDetails.username = data.username;
+        authSection.style.display = "none";
+        authStatusBox.innerText = `Signed in as ${data.username}`;
+        logoutButton.style.display = "block";
+        updateCreateRoomButtonVisibility();
+      }
+
+      async function handleLoginEvent(event) {
+        event.preventDefault();
+        const username = loginForm["username"].value;
+        const password = loginForm["password"].value;
+        const [_, error] = await useFetch("/auth/login", "POST", {
+          username,
+          password,
+        });
+        if (error) return console.error(error);
+
+        window.location.reload();
+      }
+
+      async function handleSignupEvent(event) {
+        event.preventDefault();
+        const username = signupForm["username"].value;
+        const password = signupForm["password"].value;
+        const [_, error] = await useFetch("/auth/register", "POST", {
+          username,
+          password,
+        });
+        if (error) return console.error(error);
+
+        window.location.reload();
+      }
+
+      async function handleLogoutEvent(event) {
+        const [_, error] = await useFetch("/auth/logout", "POST");
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        isAuth = false;
+        authStatusBox.innerText = "Not signed in";
+        loginForm.style.display = "block";
+        logoutButton.style.display = "none";
+        window.location.reload();
+      }
+
+      async function postChatMessage(event) {
+        event.preventDefault();
+        const msg = chatForm["new-msg-box"].value;
+
+        if (!isAuth) {
+          console.error("Cannot post chat message, not authenticated");
+          return;
+        }
+
+        socket.emit("roomMessageEmit", {
+          username: userDetails.username,
+          roomId: activeRoom.id,
+          message: msg,
+        });
+
+        chatForm["new-msg-box"].value = "";
+      }
+
+      async function handleCreateRoomSubmit(event) {
+        event.preventDefault();
+
+        const roomName = createRoomForm["room-name"].value.trim();
+
+        if (!roomName || roomName.length < 3) {
+          alert("Room name must be at least 3 characters");
+          return;
+        }
+
+        try {
+          const [data, error] = await useFetch("/rooms", "POST", {
+            name: roomName,
+          });
+
+          if (error) {
+            console.error("Error creating room:", error);
+            alert("Failed to create room. Please try again.");
+            return;
+          }
+
+          closeCreateRoomModal();
+          socket.emit("roomCreated", { room: data });
+          addRoomToUI(data);
+          switchRoom(data.id);
+        } catch (error) {
+          console.error("Error in room creation:", error);
+          alert("An unexpected error occurred. Please try again.");
+        }
+      }
+
+      async function handleRoomLoad() {
+        chatArea.innerHTML = "";
+        const url = new URL(window.location);
+        const currentRoomId = url.searchParams.get("roomId");
+
+        if (currentRoomId) {
+          activeRoom.id = currentRoomId;
+        } else if (generalRoom.id) {
+          url.searchParams.set("roomId", generalRoom.id);
+          window.history.pushState({}, "", url.toString());
+          activeRoom.id = generalRoom.id;
+        }
+
+        socket.emit("switchToRoom", { roomId: activeRoom.id });
+        updateActiveRoomName();
+        highlightActiveRoomButton();
+      }
+
       socket.on("connect", () => {
-        statusIndicatorBox.innerText + "connected!";
+        statusIndicatorBox.innerText += "connected!";
 
         setTimeout(() => {
-          socket.emit("clientStateUpdate", {
-            activeRoom,
-          });
+          socket.emit("clientStateUpdate", { activeRoom });
           console.log("connected");
         }, 1000);
       });
@@ -195,19 +581,12 @@
         if (roomId === activeRoom.id) {
           roomStateButton.innerText = "Leave room";
           roomStateButton.className = "leave-room-btn";
-
           roomStateButton.disabled = false;
           roomStateButton.style.display = "block";
         }
       });
 
       socket.on("roomLeaveSuccess", (data) => {
-        const { roomId } = data;
-
-        // if (roomId === activeRoom.id) {
-        //   switchRoom(generalRoom.id);
-        // }
-
         chatArea.innerHTML += `<p class="system">You have left the room</p>`;
         roomStateButton.innerText = "Join room";
         roomStateButton.disabled = false;
@@ -245,20 +624,69 @@
         chatArea.innerHTML += `<p class="system">${message ?? ""}</p>`;
 
         if (type === "NOT_A_MEMBER") {
-          const roomStateButton = $("#room-state-button");
           roomStateButton.innerText = "Join Room";
           roomStateButton.disabled = false;
           roomStateButton.style.display = "block";
         }
       });
 
+      socket.on("roomPreviousMessages", (messages) => {
+        chatArea.innerHTML = "";
+        messages.forEach((msg) => {
+          chatArea.innerHTML += renderChatBubble(msg);
+        });
+        scrollToBottom();
+      });
+
+      socket.on("roomMessageBroadcast", (msg) => {
+        console.log("new room message", msg);
+        chatArea.innerHTML += renderChatBubble(msg);
+        scrollToBottom();
+      });
+
+      socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
+        if (roomId === activeRoom.id) {
+          updateRoomStateButtonUI(isMember);
+
+          roomStateButton.onclick = () => {
+            roomStateButton.disabled = true;
+            if (isMember) {
+              roomStateButton.innerText = "Leaving...";
+              socket.emit("leaveRoom", { roomId: activeRoom.id });
+            } else {
+              roomStateButton.innerText = "Joining...";
+              socket.emit("joinRoom", { roomId: activeRoom.id });
+            }
+          };
+        }
+      });
+
+      socket.on("connect_error", (err) => {
+        statusIndicatorBox.innerText += "disconnected";
+        console.error("Connection failed:", err.message);
+      });
+
+      socket.on("disconnect", () => {
+        statusIndicatorBox.innerText += "disconnected";
+        console.log("Disconnected from server.");
+      });
+
       setInterval(() => {
         socket.emit("heartbeat");
       }, 30 * 1000);
 
-      socket.on("connect_error", (err) => {
-        statusIndicatorBox.innerText + "disconnected";
-        console.error("Connection failed:", err.message);
+      loginForm.addEventListener("submit", handleLoginEvent);
+      signupForm.addEventListener("submit", handleSignupEvent);
+      logoutButton.addEventListener("click", handleLogoutEvent);
+      chatForm.addEventListener("submit", postChatMessage);
+      createRoomBtn.addEventListener("click", openCreateRoomModal);
+      closeModalBtn.addEventListener("click", closeCreateRoomModal);
+      createRoomForm.addEventListener("submit", handleCreateRoomSubmit);
+
+      window.addEventListener("click", (event) => {
+        if (event.target === createRoomModal) {
+          closeCreateRoomModal();
+        }
       });
 
       const tabButtons = document.querySelectorAll(".tab-button");
@@ -278,480 +706,6 @@
 
       document.querySelector(".tab-button.active").click();
 
-      function renderChatBubble(data) {
-        const isCurrentUser = data.username === userDetails.username;
-
-        return `
-              <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
-                <p class="chat-bubble-username">~${data.username}</p>
-                <div class="chat-bubble-chatdata">
-                  <p class="chat-bubble-message">${data.message}</p>
-                  <p class="chat-bubble-timestamp">${convertToLocalTime(
-                    data.timestamp
-                  )}</p>
-                </div>
-              </div>
-            `;
-      }
-
-      socket.on("roomPreviousMessages", (messages) => {
-        chatArea.innerHTML = "";
-        messages.forEach((msg) => {
-          chatArea.innerHTML += renderChatBubble(msg);
-        });
-        scrollToBottom();
-      });
-
-      socket.on("roomMessageBroadcast", (msg) => {
-        console.log("new room message", msg);
-        chatArea.innerHTML += renderChatBubble(msg);
-        scrollToBottom();
-      });
-
-      socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
-        if (roomId === activeRoom.id) {
-          const roomStateButton = $("#room-state-button");
-
-          updateRoomStateButtonUI(isMember);
-
-          // Set the click handler based on the server's actual membership status
-          roomStateButton.onclick = () => {
-            roomStateButton.disabled = true;
-            if (isMember) {
-              roomStateButton.innerText = "Leaving...";
-              socket.emit("leaveRoom", { roomId: activeRoom.id });
-            } else {
-              roomStateButton.innerText = "Joining...";
-              socket.emit("joinRoom", { roomId: activeRoom.id });
-            }
-          };
-        }
-      });
-
-      socket.on("disconnect", () => {
-        statusIndicatorBox.innerText + "disconnected";
-        console.log("Disconnected from server.");
-      });
-
-      /**
-       * Fetch wrapper function
-       * @param {string} endpoint - The endpoint to fetch data from.
-       * @param {"GET" | "POST" | "PUT" | "DELETE"} [method="GET"] - HTTP method.
-       * @param {Object} [body=null] - Request body for POST/PUT requests.
-       * @param {Object} [headers={}] - Additional headers.
-       * @returns {Promise<[any, Error|null]>} - Returns a tuple [data, error].
-       */
-      const useFetch = async (
-        endpoint,
-        method = "GET",
-        body = null,
-        headers = {},
-        baseURL = "http://localhost:3500"
-      ) => {
-        try {
-          const options = {
-            method,
-            headers: { "Content-Type": "application/json", ...headers },
-            body: body ? JSON.stringify(body) : null,
-            credentials: "include",
-          };
-
-          const response = await fetch(`${baseURL}${endpoint}`, options);
-          if (!response.ok)
-            throw new Error(`${response.status} - ${response.statusText}`);
-          return [await response.json(), null];
-        } catch (error) {
-          return [null, error];
-        }
-      };
-
-      async function renderUsers(users) {
-        $("#users").innerHTML = "";
-        users.forEach((user) => {
-          let baseClass = "user-status-indicator ";
-          if (user.isOnline) {
-            baseClass += "user-is-online";
-          } else {
-            baseClass += "user-is-offline";
-          }
-
-          $("#users").innerHTML += `
-                  <div class="user">
-                    <span class="${baseClass}"></span><p>${user.username}</p>
-                  </div>
-                  `;
-        });
-      }
-
-      async function initialDataFetch() {
-        const usersFetchReq = useFetch("/users");
-        const roomsFetchReq = useFetch("/rooms");
-
-        const [userFetch, roomFetch] = await Promise.all([
-          usersFetchReq,
-          roomsFetchReq,
-        ]);
-
-        const [users, usersError] = userFetch;
-        if (usersError) console.error(usersError);
-
-        allUsers = users.filter((user) => user.username !== "system");
-        renderUsers(allUsers);
-
-        const [rooms, roomsFetchError] = roomFetch;
-        if (roomsFetchError) console.error(roomsFetchError);
-
-        generalRoom = rooms.find((room) => room?.meta?.isGeneral);
-
-        rooms.forEach((room) => {
-          $("#rooms").innerHTML += `
-            <button id=${room.id} class="room" 
-              data-created-by="${room.created_by?.username || ""}">
-              <span>${room.name}</span>
-            </button>
-            `;
-        });
-      }
-
-      loginForm.addEventListener("submit", handleLoginEvent);
-      signupForm.addEventListener("submit", handleSignupEvent);
-      logoutButton.addEventListener("click", handleLogoutEvent);
-      chatForm.addEventListener("submit", postChatMessage);
-
-      async function handleSignupEvent(event) {
-        event.preventDefault();
-        const username = signupForm["username"].value;
-        const password = signupForm["password"].value;
-        const [_, error] = await useFetch("/auth/register", "POST", {
-          username,
-          password,
-        });
-        if (error) return console.error(error);
-
-        window.location.reload();
-      }
-
-      async function handleLoginEvent(event) {
-        event.preventDefault();
-        const username = loginForm["username"].value;
-        const password = loginForm["password"].value;
-        const [_, error] = await useFetch("/auth/login", "POST", {
-          username,
-          password,
-        });
-        if (error) return console.error(error);
-
-        window.location.reload();
-      }
-
-      async function handleLogoutEvent(event) {
-        const [_, error] = await useFetch("/auth/logout", "POST");
-
-        if (error) {
-          console.error(error);
-          return;
-        }
-
-        isAuth = false;
-        authStatusBox.innerText = "Not signed in";
-        loginForm.style.display = "block";
-        logoutButton.style.display = "none";
-        window.location.reload();
-      }
-
-      async function fetchUserProfile() {
-        const [data, error] = await useFetch("/auth/profile");
-
-        if (error) {
-          console.log(`An error occured: ${error}`);
-          authStatusBox.innerText = "Not signed in";
-          logoutButton.style.display = "none";
-          isAuth = false;
-          updateCreateRoomButtonVisibility();
-          return;
-        }
-
-        isAuth = true;
-        userDetails.username = data.username;
-        authSection.style.display = "none";
-        authStatusBox.innerText = `Signed in as ${data.username}`;
-        logoutButton.style.display = "block";
-        updateCreateRoomButtonVisibility();
-      }
-
-      async function postChatMessage(event) {
-        event.preventDefault();
-        const msg = chatForm["new-msg-box"].value;
-
-        if (!isAuth) {
-          console.error("Cannot post chat message, not authenticated");
-          return;
-        }
-
-        socket.emit("roomMessageEmit", {
-          username: userDetails.username,
-          roomId: activeRoom.id,
-          message: msg,
-        });
-
-        chatForm["new-msg-box"].value = "";
-      }
-
-      function scrollToBottom() {
-        chatArea.scrollTop = chatArea.scrollHeight;
-      }
-
-      function convertToLocalTime(utcTimestamp) {
-        try {
-          const utcDate = new Date(utcTimestamp);
-
-          if (isNaN(utcDate)) {
-            throw new Error("Invalid UTC timestamp");
-          }
-
-          const localTime = utcDate.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          });
-
-          return localTime;
-        } catch (error) {
-          console.error("Error converting time:", error.message);
-          return null;
-        }
-      }
-
-      createRoomBtn.addEventListener("click", openCreateRoomModal);
-      closeModalBtn.addEventListener("click", closeCreateRoomModal);
-      window.addEventListener("click", (event) => {
-        if (event.target === createRoomModal) {
-          closeCreateRoomModal();
-        }
-      });
-      createRoomForm.addEventListener("submit", handleCreateRoomSubmit);
-
-      // Add these functions for modal control
-      function openCreateRoomModal() {
-        createRoomModal.style.display = "block";
-      }
-
-      function closeCreateRoomModal() {
-        createRoomModal.style.display = "none";
-        createRoomForm.reset();
-      }
-
-      function updateRoomStateButtonUI(isMember) {
-        const roomStateButton = $("#room-state-button");
-
-        if (isMember) {
-          roomStateButton.innerText = "Leave Room";
-          roomStateButton.className = "leave-room-btn";
-        } else {
-          roomStateButton.innerText = "Join Room";
-          roomStateButton.className = "join-room-btn";
-        }
-
-        roomStateButton.disabled = false;
-        roomStateButton.style.display = "block";
-      }
-
-      // Function to handle room creation
-      async function handleCreateRoomSubmit(event) {
-        event.preventDefault();
-
-        const roomName = createRoomForm["room-name"].value.trim();
-
-        if (!roomName || roomName.length < 3) {
-          alert("Room name must be at least 3 characters");
-          return;
-        }
-
-        try {
-          const [data, error] = await useFetch("/rooms", "POST", {
-            name: roomName,
-          });
-
-          if (error) {
-            console.error("Error creating room:", error);
-            alert("Failed to create room. Please try again.");
-            return;
-          }
-
-          // Close the modal
-          closeCreateRoomModal();
-
-          // Emit event to notify server about new room
-          socket.emit("roomCreated", { room: data });
-
-          // Add the room to the UI immediately for the creator
-          addRoomToUI(data);
-
-          // Switch to the newly created room
-          switchRoom(data.id);
-        } catch (error) {
-          console.error("Error in room creation:", error);
-          alert("An unexpected error occurred. Please try again.");
-        }
-      }
-
-      function addRoomToUI(room) {
-        if (document.getElementById(room.id)) {
-          return;
-        }
-
-        const roomElement = document.createElement("button");
-        roomElement.id = room.id;
-        roomElement.className = "room";
-        roomElement.setAttribute(
-          "data-created-by",
-          room.created_by?.username || userDetails.username
-        );
-
-        const roomNameSpan = document.createElement("span");
-        roomNameSpan.textContent = room.name;
-
-        roomElement.appendChild(roomNameSpan);
-
-        // Add click event to the new room button
-        roomElement.addEventListener("click", (event) => {
-          let button = event.target;
-          if (button.tagName !== "BUTTON") {
-            button = button.closest("button");
-          }
-          switchRoom(button.id);
-        });
-
-        $("#rooms").appendChild(roomElement);
-      }
-
-      function updateActiveRoomName() {
-        const activeRoomButton = document.getElementById(activeRoom.id);
-        const activeRoomName = activeRoomButton
-          ? activeRoomButton.textContent
-          : "General";
-        $("#chat-room-name").innerText =
-          `Chat Room - ${activeRoomName}`.replace(/[\n\r]+/g, " ");
-      }
-
-      function highlightActiveRoomButton() {
-        $$(".room").forEach((roomButton) => {
-          roomButton.classList.remove("active-room");
-        });
-
-        const activeRoomButton = document.getElementById(activeRoom.id);
-        if (activeRoomButton) {
-          activeRoomButton.classList.add("active-room");
-        }
-      }
-
-      async function switchRoom(roomId) {
-        if (!roomId) console.error("This room has no id");
-
-        const url = new URL(window.location);
-        const currentRoomId = url.searchParams.get("roomId");
-
-        if (currentRoomId === roomId) return;
-
-        chatArea.innerHTML = "";
-
-        if (currentRoomId !== roomId) {
-          url.searchParams.set("roomId", roomId);
-          window.history.pushState({}, "", url);
-
-          // First try to switch to the room
-          socket.emit("switchToRoom", { roomId });
-
-          activeRoom.id = roomId;
-          updateActiveRoomName();
-          highlightActiveRoomButton();
-          updateRoomStateButton();
-        }
-      }
-
-      function updateRoomStateButton() {
-        const roomStateButton = $("#room-state-button");
-
-        // Check if this is the general room (can't leave)
-        if (activeRoom.id === generalRoom.id) {
-          roomStateButton.style.display = "none";
-          return;
-        }
-
-        // Check if user is the creator of this room (can't leave)
-        const currentRoom = getAllRooms().find(
-          (room) => room.id === activeRoom.id
-        );
-        if (
-          currentRoom &&
-          currentRoom.created_by &&
-          currentRoom.created_by.username === userDetails.username
-        ) {
-          roomStateButton.style.display = "none";
-          return;
-        }
-
-        // Show loading state while checking membership
-        roomStateButton.innerText = "Checking...";
-        roomStateButton.disabled = true;
-        roomStateButton.style.display = "block";
-
-        // Always check with the server for the actual membership status
-        socket.emit("checkRoomMembership", { roomId: activeRoom.id });
-      }
-
-      function getAllRooms() {
-        return Array.from($$(".room")).map((roomElem) => {
-          return {
-            id: roomElem.id,
-            name: roomElem.textContent.trim(),
-            created_by: {
-              username: roomElem.dataset.createdBy,
-            },
-          };
-        });
-      }
-
-      function joinRoom(roomId) {
-        // We no longer need these as they're handled in the click handler
-        // When the server confirms joining, it'll send a roomJoinSuccess event
-        socket.emit("joinRoom", { roomId });
-      }
-
-      function leaveRoom(roomId) {
-        // We no longer need these as they're handled in the click handler
-        // When the server confirms leaving, it'll send a roomLeaveSuccess event
-        socket.emit("leaveRoom", { roomId });
-      }
-
-      async function handleRoomLoad() {
-        chatArea.innerHTML = "";
-        const url = new URL(window.location);
-        const currentRoomId = url.searchParams.get("roomId");
-
-        if (currentRoomId) {
-          activeRoom.id = currentRoomId;
-        } else {
-          if (generalRoom.id) {
-            url.searchParams.set("roomId", generalRoom.id);
-            window.history.pushState({}, "", url.toString());
-            activeRoom.id = generalRoom.id;
-          }
-        }
-        socket.emit("switchToRoom", { roomId: activeRoom.id });
-
-        updateActiveRoomName();
-        highlightActiveRoomButton();
-      }
-
-      function updateCreateRoomButtonVisibility() {
-        if (isAuth) {
-          createRoomBtn.style.display = "flex";
-        } else {
-          createRoomBtn.style.display = "none";
-        }
-      }
-
       document.addEventListener("DOMContentLoaded", async () => {
         await fetchUserProfile();
         await initialDataFetch();
@@ -763,7 +717,6 @@
         $$(".room").forEach((room) => {
           room.addEventListener("click", (event) => {
             let button = event.target;
-
             if (button.tagName !== "BUTTON") {
               button = button.closest("button");
             }

@@ -13,4 +13,7 @@ export const databaseConfig = (
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   synchronize: configService.get('NODE_ENV') !== 'production',
   logging: configService.get('DB_LOGGING', 'false') === 'true',
+  extra: {
+    ssl: configService.get('DB_SSL_REQUIRE', 'false'),
+  },
 });

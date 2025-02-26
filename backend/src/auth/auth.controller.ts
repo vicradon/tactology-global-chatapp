@@ -64,7 +64,7 @@ export class AuthController {
       httpOnly: true,
       signed: true,
       secure: true,
-      sameSite: true,
+      sameSite: 'none',
       maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
     });
   }

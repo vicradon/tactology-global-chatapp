@@ -157,6 +157,8 @@
       const createRoomModal = $("#create-room-modal");
       const closeModalBtn = $(".close-modal");
       const createRoomForm = $("#create-room-form");
+      const tabButtons = $$(".tab-button");
+      const authForms = $$(".auth-form");
 
       let isAuth = false;
       let appReady = false;
@@ -255,19 +257,6 @@
         });
       }
 
-      // function updateRoomStateButtonUI(isMember) {
-      //   if (isMember) {
-      //     roomStateButton.innerText = "Leave Room";
-      //     roomStateButton.className = "leave-room-btn";
-      //   } else {
-      //     roomStateButton.innerText = "Join Room";
-      //     roomStateButton.className = "join-room-btn";
-      //   }
-
-      //   roomStateButton.disabled = false;
-      //   roomStateButton.style.display = "block";
-      // }
-
       function updateActiveRoomName() {
         const activeRoomButton = document.getElementById(activeRoom.id);
         const activeRoomName = activeRoomButton
@@ -287,31 +276,6 @@
           activeRoomButton.classList.add("active-room");
         }
       }
-
-      // function updateRoomStateButton() {
-      //   if (activeRoom.id === generalRoom.id) {
-      //     roomStateButton.style.display = "none";
-      //     return;
-      //   }
-
-      //   const currentRoom = getAllRooms().find(
-      //     (room) => room.id === activeRoom.id
-      //   );
-      //   if (
-      //     currentRoom &&
-      //     currentRoom.created_by &&
-      //     currentRoom.created_by.username === userDetails.username
-      //   ) {
-      //     roomStateButton.style.display = "none";
-      //     return;
-      //   }
-
-      //   roomStateButton.innerText = "Checking...";
-      //   roomStateButton.disabled = true;
-      //   roomStateButton.style.display = "block";
-
-      //   socket.emit("checkRoomMembership", { roomId: activeRoom.id });
-      // }
 
       function updateCreateRoomButtonVisibility() {
         createRoomBtn.style.display = isAuth ? "flex" : "none";
@@ -405,7 +369,6 @@
         activeRoom.id = roomId;
         updateActiveRoomName();
         highlightActiveRoomButton();
-        // updateRoomStateButton();
       }
 
       async function initialDataFetch() {
@@ -442,7 +405,7 @@
         const [data, error] = await useFetch("/auth/profile");
 
         if (error) {
-          console.log(`An error occured: ${error}`);
+          console.error(`An error occured: ${error}`);
           authStatusBox.innerText = "Not signed in";
           logoutButton.style.display = "none";
           isAuth = false;
@@ -563,10 +526,6 @@
       }
 
       async function joinOrLeaveRoom() {
-        // check room state
-        // if in room, update the button appropriately
-        // perform the action
-
         socket.emit("updateRoomMembership", {
           currentRoom: {
             id: activeRoom.id,
@@ -580,13 +539,15 @@
         roomStateButton.disabled = true;
       }
 
+      async function handleAccountChickenOut(account, action) {
+        const users = allUsers.filter(
+          (user) => user.username !== account.username
+        );
+        renderUsers(users);
+      }
+
       socket.on("connect", () => {
         statusIndicatorBox.innerText = "connected!";
-
-        // setTimeout(() => {
-        //   socket.emit("clientStateUpdate", { activeRoom });
-        //   console.log("connected");
-        // }, 1000);
       });
 
       socket.on("userJoinedRoom", (data) => {
@@ -595,24 +556,6 @@
           chatArea.innerHTML += `<p class="system">${username} joined the room</p>`;
           scrollToBottom();
         }
-      });
-
-      socket.on("roomJoinSuccess", (data) => {
-        const { roomId } = data;
-        if (roomId === activeRoom.id) {
-          roomStateButton.innerText = "Leave room";
-          roomStateButton.className = "leave-room-btn";
-          roomStateButton.disabled = false;
-          roomStateButton.style.display = "block";
-        }
-      });
-
-      // or this can be handled with the room membership status event
-      socket.on("roomLeaveSuccess", (data) => {
-        roomStateButton.innerText = "Join room";
-        roomStateButton.disabled = false;
-        roomStateButton.style.display = "block";
-        roomStateButton.className = "join-room-btn";
       });
 
       socket.on("userLeftRoom", (data) => {
@@ -624,30 +567,44 @@
       });
 
       socket.on("newRoomCreated", (room) => {
-        console.log("New room created:", room);
         addRoomToUI(room);
+      });
+
+      socket.on("userChickensOut", ({ account }) => {
+        handleAccountChickenOut(account);
       });
 
       socket.on("onlineUsersUpdate", (onlineUsers) => {
         setTimeout(() => {
-          console.log({ onlineUsers });
           const onlineUsersUsernames = onlineUsers.map((user) => user.username);
-          const users = allUsers.map((user) => ({
+
+          const existingUsernames = new Set(
+            allUsers.map((user) => user.username)
+          );
+
+          const updatedUsers = allUsers.map((user) => ({
             ...user,
             isOnline: onlineUsersUsernames.includes(user.username),
           }));
-          renderUsers(users);
+
+          const newUsers = onlineUsers
+            .filter((onlineUser) => !existingUsernames.has(onlineUser.username))
+            .map((onlineUser) => ({
+              username: onlineUser.username,
+              isOnline: true,
+              id: onlineUser.id || null,
+            }));
+
+          const combinedUsers = [...updatedUsers, ...newUsers];
+
+          allUsers = combinedUsers;
+
+          renderUsers(combinedUsers);
         }, 1000);
       });
 
       socket.on("tempSystemMessage", ({ message, type }) => {
         chatArea.innerHTML += `<p class="system">${message ?? ""}</p>`;
-
-        // if (type === "NOT_A_MEMBER") {
-        //   roomStateButton.innerText = "Join Room";
-        //   roomStateButton.disabled = false;
-        //   roomStateButton.style.display = "block";
-        // }
       });
 
       socket.on("roomPreviousMessages", (messages) => {
@@ -659,37 +616,22 @@
       });
 
       socket.on("roomMessageBroadcast", (msg) => {
-        console.log("new room message", msg);
-        chatArea.innerHTML += renderChatBubble(msg);
-        scrollToBottom();
+        if (msg.roomId === activeRoom.id) {
+          chatArea.innerHTML += renderChatBubble(msg);
+          scrollToBottom();
+        }
       });
 
       socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
         if (isMember) {
-          console.log("you are a member, showing leave button");
           roomStateButton.innerText = "Leave room";
           roomStateButton.className = "leave-room-btn";
         } else {
-          console.log("you are not a member, showing join button");
           roomStateButton.innerText = "Join room";
           roomStateButton.className = "join-room-btn";
         }
 
         roomStateButton.disabled = false;
-
-        //   if (roomId === activeRoom.id) {
-        //     // updateRoomStateButtonUI(isMember);
-        //     //   roomStateButton.onclick = () => {
-        //     //     roomStateButton.disabled = true;
-        //     //     if (isMember) {
-        //     //       roomStateButton.innerText = "Leaving...";
-        //     //       socket.emit("leaveRoom", { roomId: activeRoom.id });
-        //     //     } else {
-        //     //       roomStateButton.innerText = "Joining...";
-        //     //       socket.emit("joinRoom", { roomId: activeRoom.id });
-        //     //     }
-        //     //   };
-        //   }
       });
 
       socket.on("connect_error", (err) => {
@@ -699,7 +641,6 @@
 
       socket.on("disconnect", () => {
         statusIndicatorBox.innerText = "disconnected";
-        console.log("Disconnected from server.");
       });
 
       setInterval(() => {
@@ -720,9 +661,6 @@
           closeCreateRoomModal();
         }
       });
-
-      const tabButtons = document.querySelectorAll(".tab-button");
-      const authForms = document.querySelectorAll(".auth-form");
 
       tabButtons.forEach((button) => {
         button.addEventListener("click", () => {

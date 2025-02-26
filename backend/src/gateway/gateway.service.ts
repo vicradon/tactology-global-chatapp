@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Message } from './entities/message.entity';
 import { Socket } from 'socket.io';
 import { RoomService } from 'src/rooms/room.service';
+import { CreateUserDto } from 'src/users/dto/create-user.dto';
 
 type NewMessageDto = {
   username: string;
@@ -26,6 +28,7 @@ export class GatewayService {
     @InjectRepository(Message)
     private messageRepository: Repository<Message>,
     private roomService: RoomService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async getAllMessages(): Promise<Message[]> {
@@ -44,6 +47,15 @@ export class GatewayService {
       where: { roomId },
       order: { timestamp: 'ASC' },
     });
+  }
+
+  removeUserAccount(user: CreateUserDto) {
+    const safeUserData = {
+      username: user.username,
+    };
+
+    this.eventEmitter.emit('user.deleted', safeUserData);
+    return null;
   }
 
   async joinUserToTheirRooms(userId: number, client: Socket) {

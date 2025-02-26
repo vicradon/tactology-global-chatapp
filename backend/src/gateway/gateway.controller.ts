@@ -1,5 +1,6 @@
 import { OnModuleInit, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConnectedSocket,
   MessageBody,
@@ -36,6 +37,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     private jwtService: JwtService,
     private gatewayService: GatewayService,
     private roomService: RoomService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   @WebSocketServer()
@@ -43,6 +45,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
 
   async onModuleInit() {
     this.server.use(this.createAuthMiddleware());
+    this.eventEmitter.on('user.deleted', (userData) => {
+      this.server.emit('userChickensOut', { userData });
+    });
+
     this.server.on('connection', async (socket) => {
       console.log(socket.id);
       console.log('Connected');
@@ -90,8 +96,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     );
 
     if (userInRoom) {
-      // remove user from room
-      // send room leave success event
       const canLeaveRoom = await this.gatewayService.canLeaveRoom(
         roomId,
         userId,
@@ -118,6 +122,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
           message: canLeaveRoom.message,
           type: canLeaveRoom.type,
         });
+        client.emit('roomMembershipStatus', {
+          roomId: roomId,
+          isMember: true,
+        });
       }
     } else {
       await this.roomService.joinRoom(roomId, userId);
@@ -138,38 +146,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         isMember: true,
       });
     }
-  }
-
-  @UseGuards(WsAuthGuard)
-  @SubscribeMessage('clientStateUpdate')
-  async clientStateUpdate(
-    @MessageBody() body: { activeRoom: { id: string } },
-    @ConnectedSocket() client: Socket,
-  ) {
-    // const userId = client.data?.user?.sub;
-    // if (!userId) {
-    //   client.emit('tempSystemMessage', {
-    //     message: 'no user id',
-    //     type: 'NO_USER_ID',
-    //   });
-    //   return;
-    // }
-    // const userInRoom = await this.gatewayService.verifyUserInRoom(
-    //   body.activeRoom.id,
-    //   userId,
-    // );
-    // if (!userInRoom) {
-    //   // This isn't necessarily because we already get the state
-    //   // client.emit('tempSystemMessage', {
-    //   //   message: 'client state update you must join the room to send messages',
-    //   //   type: 'NOT_A_MEMBER',
-    //   // });
-    //   return;
-    // }
-    // const messages = await this.gatewayService.getMessagesByRoom(
-    //   body.activeRoom.id,
-    // );
-    // client.emit('roomPreviousMessages', messages);
   }
 
   handleDisconnect(socket: Socket) {

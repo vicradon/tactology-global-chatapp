@@ -63,7 +63,6 @@ export class GatewayService {
 
     for (const room of userRooms) {
       client.join(room.id);
-      console.log(`User ${userId} joined room ${room.id}`);
     }
   }
 

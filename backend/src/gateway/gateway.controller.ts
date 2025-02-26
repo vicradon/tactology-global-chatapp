@@ -28,7 +28,7 @@ type NewMessageDto = {
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:3200'],
+    origin: JSON.parse(process.env.ALLOWED_ORIGINS),
     credentials: true,
   },
 })
@@ -50,9 +50,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     });
 
     this.server.on('connection', async (socket) => {
-      console.log(socket.id);
-      console.log('Connected');
-
       try {
         const userId = socket.data.user.sub;
         const username = socket.data.user.username;
@@ -274,10 +271,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       await this.roomService.joinRoom(data.roomId, userId);
 
       client.join(data.roomId);
-      console.log(
-        `User ${userId} joined room ${data.roomId} via joinRoom event`,
-      );
-
       client.emit('roomJoinSuccess', { roomId: data.roomId });
 
       const messages = await this.gatewayService.getMessagesByRoom(data.roomId);
@@ -370,8 +363,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       await this.roomService.leaveRoom(data.roomId, userId);
 
       client.leave(data.roomId);
-      console.log(`User ${userId} left room ${data.roomId}`);
-
       client.emit('roomLeaveSuccess', { roomId: data.roomId });
 
       client.to(data.roomId).emit('userLeftRoom', {
@@ -424,10 +415,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.gatewayService.updateUserActivity(userId);
 
     this.server.emit('newRoomCreated', data.room);
-
-    console.log(
-      `User ${userId} created a new room: ${data.room.name} (${data.room.id})`,
-    );
   }
 
   @UseGuards(WsAuthGuard)

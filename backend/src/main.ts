@@ -5,13 +5,11 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  const allowedOrigins = JSON.parse(process.env.ALLOWED_ORIGINS);
   app.enableCors({
     origin: (origin: string, callback: any) => {
-      if (
-        !origin ||
-        origin.includes('localhost:') ||
-        origin.includes('127.0.0.1:')
-      ) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));

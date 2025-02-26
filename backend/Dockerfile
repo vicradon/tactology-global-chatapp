@@ -4,6 +4,7 @@ WORKDIR /backend
 
 COPY package*.json ./
 
+RUN npm install -g @nestjs/cli
 RUN npm install --omit=dev
 
 COPY . .

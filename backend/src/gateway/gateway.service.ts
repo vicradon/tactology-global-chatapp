@@ -7,12 +7,12 @@ import { Socket } from 'socket.io';
 import { RoomService } from 'src/rooms/room.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 
-type NewMessageDto = {
-  username: string;
-  message: string;
+interface MessageData {
+  sender: string;
+  text: string;
   timestamp: string;
   roomId?: string;
-};
+}
 
 interface OnlineUser {
   username: string;
@@ -37,8 +37,13 @@ export class GatewayService {
     });
   }
 
-  async saveMessage(messageData: NewMessageDto): Promise<Message> {
-    const message = this.messageRepository.create(messageData);
+  async saveMessage(messageData: MessageData): Promise<Message> {
+    const message = this.messageRepository.create({
+      username: messageData.sender,
+      message: messageData.text,
+      timestamp: messageData.timestamp,
+      roomId: messageData.roomId,
+    });
     return this.messageRepository.save(message);
   }
 
@@ -46,7 +51,17 @@ export class GatewayService {
     return this.messageRepository.find({
       where: { roomId },
       order: { timestamp: 'ASC' },
+      take: 50,
     });
+  }
+
+  async getActiveUsersInRoom(roomId: string): Promise<string[]> {
+    const roomUsers = await this.roomService.getUsersInRoom(roomId);
+    const onlineUserIds = [...this.onlineUsers.keys()];
+
+    return roomUsers
+      .filter((user) => onlineUserIds.includes(user.id))
+      .map((user) => user.username);
   }
 
   removeUserAccount(user: CreateUserDto) {

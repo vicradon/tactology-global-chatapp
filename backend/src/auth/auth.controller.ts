@@ -37,6 +37,7 @@ export class AuthController {
     return {
       status: 'success',
       message: 'Registration successful',
+      accessToken,
     };
   }
 
@@ -56,6 +57,7 @@ export class AuthController {
     return {
       status: 'success',
       message: 'login successful',
+      accessToken,
     };
   }
 

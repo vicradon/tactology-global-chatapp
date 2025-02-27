@@ -19,12 +19,12 @@ import * as dotenv from 'dotenv';
 import { RoomService } from 'src/rooms/room.service';
 dotenv.config();
 
-type NewMessageDto = {
-  username: string;
-  message: string;
-  timestamp?: string;
+interface MessageData {
+  sender: string;
+  text: string;
+  timestamp: string;
   roomId?: string;
-};
+}
 
 @WebSocketGateway({
   cors: {
@@ -46,7 +46,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   async onModuleInit() {
     this.server.use(this.createAuthMiddleware());
     this.eventEmitter.on('user.deleted', (userData) => {
-      this.server.emit('userChickensOut', { userData });
+      this.server.emit('event', {
+        event: 'userDeleted',
+        data: { userData },
+      });
     });
 
     this.server.on('connection', async (socket) => {
@@ -60,14 +63,20 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       } catch (error) {
         console.error('Error in connection handler:', error);
         const messages = await this.gatewayService.getAllMessages();
-        socket.emit('roomPreviousMessages', messages);
+        socket.emit('event', {
+          event: 'previousMessages',
+          data: messages,
+        });
       }
     });
   }
 
   private broadcastOnlineUsers() {
     const onlineUsers = this.gatewayService.getOnlineUsers();
-    this.server.emit('onlineUsersUpdate', onlineUsers);
+    this.server.emit('event', {
+      event: 'onlineUsers',
+      data: onlineUsers,
+    });
   }
 
   @UseGuards(WsAuthGuard)
@@ -80,9 +89,12 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     const roomId = body?.currentRoom?.id;
 
     if (!userId) {
-      client.emit('tempSystemMessage', {
-        message: 'no user id',
-        type: 'NO_USER_ID',
+      client.emit('event', {
+        event: 'message',
+        data: {
+          message: 'no user id',
+          type: 'NO_USER_ID',
+        },
       });
       return;
     }
@@ -102,45 +114,65 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         await this.roomService.leaveRoom(roomId, userId);
         client.leave(roomId);
 
-        client.emit('roomLeaveSuccess', { roomId });
-
-        client.to(roomId).emit('userLeftRoom', {
-          username: client.data.user.username,
-          roomId,
+        client.emit('event', {
+          event: 'roomLeaveSuccess',
+          data: { roomId },
         });
 
-        client.emit('roomMembershipStatus', {
-          roomId: roomId,
-          isMember: false,
+        client.to(roomId).emit('event', {
+          event: 'message',
+          data: `${client.data.user.username} left the room`,
+        });
+
+        client.emit('event', {
+          event: 'roomMembershipStatus',
+          data: {
+            roomId: roomId,
+            isMember: false,
+          },
         });
       } else {
-        client.emit('tempSystemMessage', {
-          username: 'system',
-          message: canLeaveRoom.message,
-          type: canLeaveRoom.type,
+        client.emit('event', {
+          event: 'message',
+          data: {
+            message: canLeaveRoom.message,
+            type: canLeaveRoom.type,
+          },
         });
-        client.emit('roomMembershipStatus', {
-          roomId: roomId,
-          isMember: true,
+        client.emit('event', {
+          event: 'roomMembershipStatus',
+          data: {
+            roomId: roomId,
+            isMember: true,
+          },
         });
       }
     } else {
       await this.roomService.joinRoom(roomId, userId);
-      client.emit('roomJoinSuccess', { roomId });
+      client.emit('event', {
+        event: 'roomJoinSuccess',
+        data: { roomId },
+      });
 
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
-      client.emit('roomPreviousMessages', messages);
+      client.emit('event', {
+        event: 'previousMessages',
+        data: messages,
+      });
 
-      client.to(roomId).emit('userJoinedRoom', {
-        username: client.data.user.username,
-        roomId,
+      client.to(roomId).emit('event', {
+        event: 'message',
+        data: `${client.data.user.username} joined the room`,
       });
 
       client.join(roomId);
 
-      client.emit('roomMembershipStatus', {
-        roomId,
-        isMember: true,
+      client.emit('event', {
+        event: 'roomMembershipStatus',
+        data: {
+          roomId,
+          isMember: true,
+        },
       });
     }
   }
@@ -197,9 +229,9 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @UseGuards(WsAuthGuard)
-  @SubscribeMessage('roomMessageEmit')
+  @SubscribeMessage('sendMessage')
   async onNewMessage(
-    @MessageBody() body: NewMessageDto,
+    @MessageBody() body: { text: string; roomId: string },
     @ConnectedSocket() client: Socket,
   ) {
     const userId = client.data?.user?.sub;
@@ -219,74 +251,78 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     );
 
     if (!userInRoom) {
-      client.emit('tempSystemMessage', {
-        message: 'you must join the room to send messages',
-        username: 'system',
-        isTemp: true,
-        type: 'NOT_A_MEMBER',
+      client.emit('event', {
+        event: 'message',
+        data: 'You must join the room to send messages',
       });
-
       return;
     }
 
-    const messageData = {
-      username: client.data.user.username,
-      message: body.message,
+    const messageData: MessageData = {
+      sender: client.data.user.username,
+      text: body.text,
       timestamp: new Date().toISOString(),
       roomId,
     };
 
     const savedMessage = await this.gatewayService.saveMessage(messageData);
-    this.server.to(roomId).emit('roomMessageBroadcast', savedMessage);
+    this.server.to(roomId).emit('event', {
+      event: 'message',
+      data: savedMessage,
+    });
   }
 
   @UseGuards(WsAuthGuard)
   @SubscribeMessage('joinRoom')
   async onJoinRoom(
-    @MessageBody() data: { roomId: string },
+    @MessageBody() data: { username: string; room: string },
     @ConnectedSocket() client: Socket,
   ) {
     const userId = client.data?.user?.sub;
     if (!userId) return;
 
     this.gatewayService.updateUserActivity(userId);
+    const roomId = data.room;
+    const username = data.username;
 
     try {
       const isInRoom = await this.gatewayService.verifyUserInRoom(
-        data.roomId,
+        roomId,
         userId,
       );
 
       if (isInRoom) {
-        client.emit('tempSystemMessage', {
-          message: 'You are already a member of this room',
-          sender: 'system',
-          isTemp: true,
-          type: 'ALREADY_A_MEMBER',
+        client.emit('event', {
+          event: 'message',
+          data: 'You are already a member of this room',
         });
-        client.emit('roomJoinSuccess', { roomId: data.roomId });
         return;
       }
 
-      await this.roomService.joinRoom(data.roomId, userId);
+      await this.roomService.joinRoom(roomId, userId);
 
-      client.join(data.roomId);
-      client.emit('roomJoinSuccess', { roomId: data.roomId });
+      client.join(roomId);
+      client.emit('event', {
+        event: 'roomJoinSuccess',
+        data: { roomId },
+      });
 
-      const messages = await this.gatewayService.getMessagesByRoom(data.roomId);
-      client.emit('roomPreviousMessages', messages);
+      const messages = await this.gatewayService.getMessagesByRoom(roomId);
+      client.emit('event', {
+        event: 'previousMessages',
+        data: messages,
+      });
 
-      client.to(data.roomId).emit('userJoinedRoom', {
-        username: client.data.user.username,
-        roomId: data.roomId,
+      // Broadcast to others in room
+      client.to(roomId).emit('event', {
+        event: 'message',
+        data: `${username} joined the room`,
       });
     } catch (error) {
       console.error(`Error joining room: ${error.message}`);
-      client.emit('tempSystemMessage', {
-        message: `Error joining room: ${error.message}`,
-        username: 'system',
-        isTemp: true,
-        type: 'UNKNOWN',
+      client.emit('event', {
+        event: 'message',
+        data: `Error joining room: ${error.message}`,
       });
     }
   }
@@ -311,24 +347,34 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     if (userInRoom) {
       client.join(roomId);
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
-      client.emit('roomPreviousMessages', messages);
-      client.emit('roomMembershipStatus', {
-        roomId,
-        isMember: true,
-        action: 'NONE',
+      client.emit('event', {
+        event: 'previousMessages',
+        data: messages,
+      });
+      client.emit('event', {
+        event: 'roomMembershipStatus',
+        data: {
+          roomId,
+          isMember: true,
+          action: 'NONE',
+        },
       });
     } else {
-      client.emit('roomPreviousMessages', []);
-      client.emit('tempSystemMessage', {
-        message: 'You must join the room to see messages or send messages',
-        username: 'system',
-        isTemp: true,
-        type: 'NOT_A_MEMBER',
+      client.emit('event', {
+        event: 'previousMessages',
+        data: [],
       });
-      client.emit('roomMembershipStatus', {
-        roomId,
-        isMember: false,
-        action: 'NONE',
+      client.emit('event', {
+        event: 'message',
+        data: 'You must join the room to see messages or send messages',
+      });
+      client.emit('event', {
+        event: 'roomMembershipStatus',
+        data: {
+          roomId,
+          isMember: false,
+          action: 'NONE',
+        },
       });
     }
   }
@@ -336,46 +382,67 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   @UseGuards(WsAuthGuard)
   @SubscribeMessage('leaveRoom')
   async onLeaveRoom(
-    @MessageBody() data: { roomId: string },
+    @MessageBody() data: { username: string; room: string },
     @ConnectedSocket() client: Socket,
   ) {
     const userId = client.data?.user?.sub;
     if (!userId) return;
 
     this.gatewayService.updateUserActivity(userId);
+    const roomId = data.room;
+    const username = data.username;
 
     try {
-      const leaveCheck = await this.gatewayService.canLeaveRoom(
-        data.roomId,
-        userId,
-      );
+      const leaveCheck = await this.gatewayService.canLeaveRoom(roomId, userId);
 
       if (!leaveCheck.canLeave) {
-        client.emit('tempSystemMessage', {
-          message: leaveCheck.message,
-          username: 'system',
-          isTemp: true,
-          type: leaveCheck.type,
+        client.emit('event', {
+          event: 'message',
+          data: leaveCheck.message,
         });
         return;
       }
 
-      await this.roomService.leaveRoom(data.roomId, userId);
+      await this.roomService.leaveRoom(roomId, userId);
 
-      client.leave(data.roomId);
-      client.emit('roomLeaveSuccess', { roomId: data.roomId });
+      client.leave(roomId);
+      client.emit('event', {
+        event: 'roomLeaveSuccess',
+        data: { roomId },
+      });
 
-      client.to(data.roomId).emit('userLeftRoom', {
-        username: client.data.user.username,
-        roomId: data.roomId,
+      client.to(roomId).emit('event', {
+        event: 'message',
+        data: `${username} left the room`,
       });
     } catch (error) {
       console.error(`Error leaving room: ${error.message}`);
-      client.emit('tempSystemMessage', {
-        message: `Error leaving room: ${error.message}`,
-        username: 'system',
-        isTemp: true,
-        type: 'ERROR',
+      client.emit('event', {
+        event: 'message',
+        data: `Error leaving room: ${error.message}`,
+      });
+    }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('getActiveUsers')
+  async onGetActiveUsers(
+    @MessageBody() data: { roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const activeUsers = await this.gatewayService.getActiveUsersInRoom(
+        data.roomId,
+      );
+      client.emit('event', {
+        event: 'activeUsers',
+        data: activeUsers,
+      });
+    } catch (error) {
+      console.error(`Error getting active users: ${error.message}`);
+      client.emit('event', {
+        event: 'message',
+        data: `Error getting active users: ${error.message}`,
       });
     }
   }
@@ -394,9 +461,12 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         data.roomId,
         userId,
       );
-      client.emit('roomMembershipStatus', {
-        roomId: data.roomId,
-        isMember,
+      client.emit('event', {
+        event: 'roomMembershipStatus',
+        data: {
+          roomId: data.roomId,
+          isMember,
+        },
       });
     } catch (error) {
       console.error(`Error checking room membership: ${error.message}`);
@@ -414,14 +484,20 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
 
     this.gatewayService.updateUserActivity(userId);
 
-    this.server.emit('newRoomCreated', data.room);
+    this.server.emit('event', {
+      event: 'newRoom',
+      data: data.room,
+    });
   }
 
   @UseGuards(WsAuthGuard)
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
     const onlineUsers = this.gatewayService.getOnlineUsers();
-    client.emit('onlineUsersUpdate', onlineUsers);
+    client.emit('event', {
+      event: 'onlineUsers',
+      data: onlineUsers,
+    });
   }
 
   @UseGuards(WsAuthGuard)
@@ -430,6 +506,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     if (client.data?.user?.sub) {
       this.gatewayService.updateUserActivity(client.data.user.sub);
     }
-    return { status: 'ok' };
+    return { event: 'heartbeatResponse', data: { status: 'ok' } };
   }
 }

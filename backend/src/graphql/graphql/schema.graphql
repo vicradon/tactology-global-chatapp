@@ -1,0 +1,65 @@
+scalar DateTime
+
+type User {
+  id: ID!
+  username: String!
+}
+
+type Room {
+  id: ID!
+  name: String!
+  createdBy: User
+  users: [User!]!
+  meta: JSON
+}
+
+type Message {
+  id: ID!
+  sender: String!
+  text: String!
+  timestamp: DateTime!
+  roomId: String
+}
+
+input LoginInput {
+  username: String!
+  password: String!
+}
+
+input RegisterInput {
+  username: String!
+  password: String!
+}
+
+input CreateRoomInput {
+  name: String!
+}
+
+type AuthResponse {
+  accessToken: String!
+  user: User!
+}
+
+type Query {
+  getProfile: User
+  getRooms: [Room!]!
+  getRoom(id: ID!): Room
+  getMessages(roomId: ID!): [Message!]!
+  getActiveUsers(roomId: ID!): [String!]!
+}
+
+type Mutation {
+  login(input: LoginInput!): AuthResponse!
+  register(input: RegisterInput!): AuthResponse!
+  createRoom(input: CreateRoomInput!): Room!
+  joinRoom(roomId: ID!): Boolean!
+  leaveRoom(roomId: ID!): Boolean!
+  sendMessage(roomId: ID!, text: String!): Message!
+}
+
+type Subscription {
+  messageAdded(roomId: ID!): Message!
+  userJoined(roomId: ID!): String!
+  userLeft(roomId: ID!): String!
+  roomCreated: Room!
+}

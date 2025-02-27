@@ -47,6 +47,12 @@ export class RoomService {
     return this.roomRepository.save(room);
   }
 
+  // Alias method for GraphQL resolver (simplified name)
+  async create(name: string, userId: number): Promise<Room> {
+    const createRoomDto: CreateRoomDto = { name };
+    return this.createRoom(createRoomDto, userId);
+  }
+
   async joinRoom(roomId: string, userId: number): Promise<Room> {
     const room = await this.roomRepository.findOne({
       where: { id: roomId },
@@ -66,7 +72,9 @@ export class RoomService {
     const isMember = room.members.some((member) => member.id === userId);
 
     if (isMember) {
-      throw new BadRequestException('User is already a member of this room');
+      // Just return the room if already a member, don't throw error
+      // This makes the API more forgiving for duplicate join attempts
+      return room;
     }
 
     room.members.push(user);
@@ -90,12 +98,18 @@ export class RoomService {
       );
     }
 
+    if (room.meta?.isGeneral) {
+      throw new ForbiddenException('You cannot leave the general room');
+    }
+
     const memberIndex = room.members.findIndex(
       (member) => member.id === userId,
     );
 
     if (memberIndex === -1) {
-      throw new BadRequestException('User is not a member of this room');
+      // Just return if not a member, don't throw error
+      // This makes the API more forgiving for duplicate leave attempts
+      return;
     }
 
     room.members.splice(memberIndex, 1);
@@ -106,6 +120,11 @@ export class RoomService {
     return this.roomRepository.find({
       relations: ['created_by', 'members'],
     });
+  }
+
+  // Alias method for GraphQL resolver
+  async findAll(): Promise<Room[]> {
+    return this.getAllRooms();
   }
 
   async checkIfUserInRoom(roomId: string, userId: number): Promise<boolean> {
@@ -148,5 +167,18 @@ export class RoomService {
       where: { created_by_id: userId },
       relations: ['created_by', 'members'],
     });
+  }
+
+  async getUsersInRoom(roomId: string): Promise<User[]> {
+    const room = await this.roomRepository.findOne({
+      where: { id: roomId },
+      relations: ['members'],
+    });
+
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
+    return room.members;
   }
 }

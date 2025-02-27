@@ -8,7 +8,9 @@
     <script type="importmap">
       {
         "imports": {
-          "socket.io-client": "https://cdn.socket.io/4.7.5/socket.io.esm.min.js"
+          "socket.io-client": "https://cdn.socket.io/4.7.5/socket.io.esm.min.js",
+          "graphql": "https://cdn.jsdelivr.net/npm/graphql@16.6.0/+esm",
+          "graphql-ws": "https://cdn.jsdelivr.net/npm/graphql-ws@5.14.2/+esm"
         }
       }
     </script>
@@ -139,13 +141,15 @@
 
     <script type="module">
       import { io } from "socket.io-client";
+      import { createClient } from "graphql-ws";
 
       const isLocalhost = ["localhost", "127.0.0.1"].includes(
         window.location.hostname
       );
-      const apiBaseURL = isLocalhost
-        ? "http://localhost:3500"
-        : "https://dachatapp.onrender.com";
+      const apiBaseURL = "https://dachatapp.onrender.com";
+      const wsURL = apiBaseURL.replace(/^http/, "ws");
+      const graphqlEndpoint = `${apiBaseURL}/graphql`;
+      const graphqlWSEndpoint = `${wsURL}/graphql`;
 
       const $ = (query) => document.querySelector(query);
       const $$ = (query) => document.querySelectorAll(query);
@@ -172,7 +176,23 @@
       let activeRoom = {};
       let allUsers = [];
       let userDetails = { username: "" };
+      let authToken = "";
 
+      // GraphQL client setup
+      let graphqlClient = null;
+
+      function setupGraphQLClient(token) {
+        if (token) {
+          graphqlClient = createClient({
+            url: graphqlWSEndpoint,
+            connectionParams: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        }
+      }
+
+      // WebSocket setup
       const socket = io(apiBaseURL, {
         reconnectionDelayMax: 10000,
         withCredentials: true,
@@ -210,6 +230,41 @@
         }
       };
 
+      /**
+       * Execute GraphQL query
+       */
+      const executeGraphQL = async (query, variables = {}) => {
+        try {
+          const headers = {};
+          if (authToken) {
+            headers["Authorization"] = `Bearer ${authToken}`;
+          }
+
+          const response = await fetch(graphqlEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...headers,
+            },
+            body: JSON.stringify({
+              query,
+              variables,
+            }),
+            credentials: "include",
+          });
+
+          const result = await response.json();
+
+          if (result.errors) {
+            throw new Error(result.errors[0].message);
+          }
+
+          return [result.data, null];
+        } catch (error) {
+          return [null, error];
+        }
+      };
+
       function scrollToBottom() {
         chatArea.scrollTop = chatArea.scrollHeight;
       }
@@ -236,19 +291,23 @@
       }
 
       function renderChatBubble(data) {
-        const isCurrentUser = data.username === userDetails.username;
+        const isCurrentUser = data.sender === userDetails.username;
 
         return `
-    <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
-      <p class="chat-bubble-username">~${data.username}</p>
-      <div class="chat-bubble-chatdata">
-        <p class="chat-bubble-message">${data.message}</p>
-        <p class="chat-bubble-timestamp">${convertToLocalTime(
-          data.timestamp
-        )}</p>
-      </div>
-    </div>
-  `;
+          <div class="chat-bubble ${isCurrentUser ? "current-user" : ""}">
+            <p class="chat-bubble-username">~${data.sender}</p>
+            <div class="chat-bubble-chatdata">
+              <p class="chat-bubble-message">${data.text}</p>
+              <p class="chat-bubble-timestamp">${convertToLocalTime(
+                data.timestamp
+              )}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderSystemMessage(message) {
+        return `<p class="system">${message}</p>`;
       }
 
       function getAllRooms() {
@@ -294,10 +353,10 @@
           baseClass += user.isOnline ? "user-is-online" : "user-is-offline";
 
           $("#users").innerHTML += `
-      <div class="user">
-        <span class="${baseClass}"></span><p>${user.username}</p>
-      </div>
-    `;
+            <div class="user">
+              <span class="${baseClass}"></span><p>${user.username}</p>
+            </div>
+          `;
         });
       }
 
@@ -311,7 +370,7 @@
         roomElement.className = "room";
         roomElement.setAttribute(
           "data-created-by",
-          room.created_by?.username || userDetails.username
+          room.createdBy?.username || userDetails.username
         );
 
         const roomNameSpan = document.createElement("span");
@@ -340,11 +399,37 @@
       }
 
       function joinRoom(roomId) {
-        socket.emit("joinRoom", { roomId });
+        // Socket.io approach
+        socket.emit("joinRoom", {
+          username: userDetails.username,
+          room: roomId,
+        });
+
+        // GraphQL alternative
+        const joinRoomMutation = `
+          mutation JoinRoom($roomId: ID!) {
+            joinRoom(roomId: $roomId)
+          }
+        `;
+
+        executeGraphQL(joinRoomMutation, { roomId });
       }
 
       function leaveRoom(roomId) {
-        socket.emit("leaveRoom", { roomId });
+        // Socket.io approach
+        socket.emit("leaveRoom", {
+          username: userDetails.username,
+          room: roomId,
+        });
+
+        // GraphQL alternative
+        const leaveRoomMutation = `
+          mutation LeaveRoom($roomId: ID!) {
+            leaveRoom(roomId: $roomId)
+          }
+        `;
+
+        executeGraphQL(leaveRoomMutation, { roomId });
       }
 
       async function handleRoomLoad() {
@@ -372,57 +457,150 @@
 
         socket.emit("switchToRoom", { roomId });
 
+        // GraphQL - get room messages
+        const getMessagesQuery = `
+          query GetMessages($roomId: ID!) {
+            getMessages(roomId: $roomId) {
+              id
+              sender
+              text
+              timestamp
+            }
+          }
+        `;
+
+        const [messagesData, messagesError] = await executeGraphQL(
+          getMessagesQuery,
+          { roomId }
+        );
+        if (!messagesError && messagesData?.getMessages) {
+          renderRoomMessages(messagesData.getMessages);
+        }
+
+        // Get active users in room
+        socket.emit("getActiveUsers", { roomId });
+
+        // GraphQL - get active users
+        const getActiveUsersQuery = `
+          query GetActiveUsers($roomId: ID!) {
+            getActiveUsers(roomId: $roomId)
+          }
+        `;
+
+        executeGraphQL(getActiveUsersQuery, { roomId }).then(
+          ([data, error]) => {
+            if (!error && data?.getActiveUsers) {
+              // Optionally handle active users from GraphQL
+            }
+          }
+        );
+
         activeRoom.id = roomId;
         updateActiveRoomName();
         highlightActiveRoomButton();
+
+        // Check if user is member of this room
+        socket.emit("checkRoomMembership", { roomId });
+      }
+
+      function renderRoomMessages(messages) {
+        chatArea.innerHTML = "";
+        messages.forEach((msg) => {
+          chatArea.innerHTML += renderChatBubble(msg);
+        });
+        scrollToBottom();
       }
 
       async function initialDataFetch() {
+        // Use GraphQL to get initial data
+        const getRoomsQuery = `
+          query {
+            getRooms {
+              id
+              name
+              createdBy {
+                username
+              }
+              meta
+            }
+          }
+        `;
+
+        const [roomsData, roomsError] = await executeGraphQL(getRoomsQuery);
+        if (roomsError) {
+          console.error("Error fetching rooms:", roomsError);
+          // Fallback to REST API
+          const [rooms, roomsFetchError] = await useFetch("/rooms");
+          if (roomsFetchError) console.error(roomsFetchError);
+
+          processRoomsData(rooms);
+        } else {
+          processRoomsData(roomsData.getRooms);
+        }
+
+        // Fetch users
         const usersFetchReq = useFetch("/users");
-        const roomsFetchReq = useFetch("/rooms");
-
-        const [userFetch, roomFetch] = await Promise.all([
-          usersFetchReq,
-          roomsFetchReq,
-        ]);
-
-        const [users, usersError] = userFetch;
+        const [users, usersError] = await usersFetchReq;
         if (usersError) console.error(usersError);
 
         allUsers = users.filter((user) => user.username !== "system");
         renderUsers(allUsers);
+      }
 
-        const [rooms, roomsFetchError] = roomFetch;
-        if (roomsFetchError) console.error(roomsFetchError);
-
+      function processRoomsData(rooms) {
         generalRoom = rooms.find((room) => room?.meta?.isGeneral);
+
+        $("#rooms").innerHTML = "";
 
         rooms.forEach((room) => {
           $("#rooms").innerHTML += `
-      <button id=${room.id} class="room" 
-        data-created-by="${room.created_by?.username || ""}">
-        <span>${room.name}</span>
-      </button>
-    `;
+            <button id=${room.id} class="room" 
+              data-created-by="${room.createdBy?.username || ""}">
+              <span>${room.name}</span>
+            </button>
+          `;
         });
       }
 
       async function fetchUserProfile() {
-        const [data, error] = await useFetch("/auth/profile");
+        // Try GraphQL first
+        const getProfileQuery = `
+          query {
+            getProfile {
+              id
+              username
+            }
+          }
+        `;
 
-        if (error) {
-          console.error(`An error occured: ${error}`);
-          authStatusBox.innerText = "Not signed in";
-          logoutButton.style.display = "none";
-          isAuth = false;
-          updateCreateRoomButtonVisibility();
-          return;
+        const [profileData, profileError] = await executeGraphQL(
+          getProfileQuery
+        );
+
+        if (profileError) {
+          // Fallback to REST API
+          const [data, error] = await useFetch("/auth/profile");
+
+          if (error) {
+            console.error(`An error occured: ${error}`);
+            authStatusBox.innerText = "Not signed in";
+            logoutButton.style.display = "none";
+            isAuth = false;
+            updateCreateRoomButtonVisibility();
+            return;
+          }
+
+          processUserData(data);
+        } else {
+          processUserData(profileData.getProfile);
         }
+      }
 
+      function processUserData(userData) {
         isAuth = true;
-        userDetails.username = data.username;
+        userDetails.username = userData.username;
         authSection.style.display = "none";
-        authStatusBox.innerText = `Signed in as ${data.username}`;
+        authStatusBox.innerText = `Signed in as ${userData.username}`;
         logoutButton.style.display = "block";
         updateCreateRoomButtonVisibility();
       }
@@ -431,11 +609,49 @@
         event.preventDefault();
         const username = loginForm["username"].value;
         const password = loginForm["password"].value;
-        const [_, error] = await useFetch("/auth/login", "POST", {
-          username,
-          password,
-        });
-        if (error) return console.error(error);
+
+        // GraphQL approach
+        const loginMutation = `
+          mutation Login($input: LoginInput!) {
+            login(input: $input) {
+              accessToken
+              user {
+                id
+                username
+              }
+            }
+          }
+        `;
+
+        const variables = {
+          input: { username, password },
+        };
+
+        const [loginData, loginError] = await executeGraphQL(
+          loginMutation,
+          variables
+        );
+
+        if (loginError) {
+          // Fallback to REST API
+          const [data, error] = await useFetch("/auth/login", "POST", {
+            username,
+            password,
+          });
+
+          if (error) {
+            console.error(error);
+            return;
+          }
+
+          if (data?.accessToken) {
+            authToken = data.accessToken;
+            setupGraphQLClient(authToken);
+          }
+        } else {
+          authToken = loginData.login.accessToken;
+          setupGraphQLClient(authToken);
+        }
 
         window.location.reload();
       }
@@ -444,11 +660,49 @@
         event.preventDefault();
         const username = signupForm["username"].value;
         const password = signupForm["password"].value;
-        const [_, error] = await useFetch("/auth/register", "POST", {
-          username,
-          password,
-        });
-        if (error) return console.error(error);
+
+        // GraphQL approach
+        const registerMutation = `
+          mutation Register($input: RegisterInput!) {
+            register(input: $input) {
+              accessToken
+              user {
+                id
+                username
+              }
+            }
+          }
+        `;
+
+        const variables = {
+          input: { username, password },
+        };
+
+        const [registerData, registerError] = await executeGraphQL(
+          registerMutation,
+          variables
+        );
+
+        if (registerError) {
+          // Fallback to REST API
+          const [data, error] = await useFetch("/auth/register", "POST", {
+            username,
+            password,
+          });
+
+          if (error) {
+            console.error(error);
+            return;
+          }
+
+          if (data?.accessToken) {
+            authToken = data.accessToken;
+            setupGraphQLClient(authToken);
+          }
+        } else {
+          authToken = registerData.register.accessToken;
+          setupGraphQLClient(authToken);
+        }
 
         window.location.reload();
       }
@@ -462,6 +716,7 @@
         }
 
         isAuth = false;
+        authToken = "";
         authStatusBox.innerText = "Not signed in";
         loginForm.style.display = "block";
         logoutButton.style.display = "none";
@@ -470,17 +725,34 @@
 
       async function postChatMessage(event) {
         event.preventDefault();
-        const msg = chatForm["new-msg-box"].value;
+        const text = chatForm["new-msg-box"].value;
 
         if (!isAuth) {
           console.error("Cannot post chat message, not authenticated");
           return;
         }
 
-        socket.emit("roomMessageEmit", {
-          username: userDetails.username,
+        // Socket.io approach
+        socket.emit("sendMessage", {
+          text,
           roomId: activeRoom.id,
-          message: msg,
+        });
+
+        // GraphQL alternative
+        const sendMessageMutation = `
+          mutation SendMessage($roomId: ID!, $text: String!) {
+            sendMessage(roomId: $roomId, text: $text) {
+              id
+              sender
+              text
+              timestamp
+            }
+          }
+        `;
+
+        executeGraphQL(sendMessageMutation, {
+          roomId: activeRoom.id,
+          text,
         });
 
         chatForm["new-msg-box"].value = "";
@@ -497,24 +769,53 @@
         }
 
         try {
-          const [data, error] = await useFetch("/rooms", "POST", {
-            name: roomName,
-          });
+          // GraphQL approach
+          const createRoomMutation = `
+            mutation CreateRoom($input: CreateRoomInput!) {
+              createRoom(input: $input) {
+                id
+                name
+                createdBy {
+                  username
+                }
+              }
+            }
+          `;
 
-          if (error) {
-            console.error("Error creating room:", error);
-            alert("Failed to create room. Please try again.");
-            return;
+          const [roomData, roomError] = await executeGraphQL(
+            createRoomMutation,
+            {
+              input: { name: roomName },
+            }
+          );
+
+          if (roomError) {
+            // Fallback to REST API
+            const [data, error] = await useFetch("/rooms", "POST", {
+              name: roomName,
+            });
+
+            if (error) {
+              console.error("Error creating room:", error);
+              alert("Failed to create room. Please try again.");
+              return;
+            }
+
+            processNewRoom(data);
+          } else {
+            processNewRoom(roomData.createRoom);
           }
-
-          closeCreateRoomModal();
-          socket.emit("roomCreated", { room: data });
-          addRoomToUI(data);
-          switchRoom(data.id);
         } catch (error) {
           console.error("Error in room creation:", error);
           alert("An unexpected error occurred. Please try again.");
         }
+      }
+
+      function processNewRoom(room) {
+        closeCreateRoomModal();
+        socket.emit("roomCreated", { room });
+        addRoomToUI(room);
+        switchRoom(room.id);
       }
 
       function makeContinuousTense(text) {
@@ -552,92 +853,91 @@
         renderUsers(users);
       }
 
+      // Handle standardized socket events
+      socket.on("event", (eventData) => {
+        const { event, data } = eventData;
+
+        switch (event) {
+          case "message":
+            if (typeof data === "string") {
+              chatArea.innerHTML += renderSystemMessage(data);
+            } else {
+              chatArea.innerHTML += renderChatBubble(data);
+            }
+            scrollToBottom();
+            break;
+
+          case "previousMessages":
+            renderRoomMessages(data);
+            break;
+
+          case "onlineUsers":
+            setTimeout(() => {
+              const onlineUsersUsernames = data.map((user) => user.username);
+
+              const existingUsernames = new Set(
+                allUsers.map((user) => user.username)
+              );
+
+              const updatedUsers = allUsers.map((user) => ({
+                ...user,
+                isOnline: onlineUsersUsernames.includes(user.username),
+              }));
+
+              const newUsers = data
+                .filter(
+                  (onlineUser) => !existingUsernames.has(onlineUser.username)
+                )
+                .map((onlineUser) => ({
+                  username: onlineUser.username,
+                  isOnline: true,
+                  id: onlineUser.id || null,
+                }));
+
+              const combinedUsers = [...updatedUsers, ...newUsers];
+
+              allUsers = combinedUsers;
+
+              renderUsers(combinedUsers);
+            }, 1000);
+            break;
+
+          case "roomJoinSuccess":
+            // Handle room join success
+            break;
+
+          case "roomLeaveSuccess":
+            // Handle room leave success
+            break;
+
+          case "roomMembershipStatus":
+            if (data.isMember) {
+              roomStateButton.innerText = "Leave room";
+              roomStateButton.className = "leave-room-btn";
+            } else {
+              roomStateButton.innerText = "Join room";
+              roomStateButton.className = "join-room-btn";
+            }
+
+            roomStateButton.disabled = false;
+            break;
+
+          case "activeUsers":
+            // Update list of active users in room
+            break;
+
+          case "newRoom":
+            addRoomToUI(data);
+            break;
+
+          case "userDeleted":
+            handleAccountChickenOut(data.userData);
+            break;
+        }
+      });
+
       socket.on("connect", () => {
         statusIndicatorBox.innerText = "connected!";
-      });
-
-      socket.on("userJoinedRoom", (data) => {
-        const { username, roomId } = data;
-        if (roomId === activeRoom.id) {
-          chatArea.innerHTML += `<p class="system">${username} joined the room</p>`;
-          scrollToBottom();
-        }
-      });
-
-      socket.on("userLeftRoom", (data) => {
-        const { username, roomId } = data;
-        if (roomId === activeRoom.id) {
-          chatArea.innerHTML += `<p class="system">${username} has left the room</p>`;
-          scrollToBottom();
-        }
-      });
-
-      socket.on("newRoomCreated", (room) => {
-        addRoomToUI(room);
-      });
-
-      socket.on("userChickensOut", ({ account }) => {
-        handleAccountChickenOut(account);
-      });
-
-      socket.on("onlineUsersUpdate", (onlineUsers) => {
-        setTimeout(() => {
-          const onlineUsersUsernames = onlineUsers.map((user) => user.username);
-
-          const existingUsernames = new Set(
-            allUsers.map((user) => user.username)
-          );
-
-          const updatedUsers = allUsers.map((user) => ({
-            ...user,
-            isOnline: onlineUsersUsernames.includes(user.username),
-          }));
-
-          const newUsers = onlineUsers
-            .filter((onlineUser) => !existingUsernames.has(onlineUser.username))
-            .map((onlineUser) => ({
-              username: onlineUser.username,
-              isOnline: true,
-              id: onlineUser.id || null,
-            }));
-
-          const combinedUsers = [...updatedUsers, ...newUsers];
-
-          allUsers = combinedUsers;
-
-          renderUsers(combinedUsers);
-        }, 1000);
-      });
-
-      socket.on("tempSystemMessage", ({ message, type }) => {
-        chatArea.innerHTML += `<p class="system">${message ?? ""}</p>`;
-      });
-
-      socket.on("roomPreviousMessages", (messages) => {
-        chatArea.innerHTML = "";
-        messages.forEach((msg) => {
-          chatArea.innerHTML += renderChatBubble(msg);
-        });
-        scrollToBottom();
-      });
-
-      socket.on("roomMessageBroadcast", (msg) => {
-        if (msg.roomId === activeRoom.id) {
-          chatArea.innerHTML += renderChatBubble(msg);
-          scrollToBottom();
-        }
-      });
-
-      socket.on("roomMembershipStatus", ({ roomId, isMember }) => {
-        if (isMember) {
-          roomStateButton.innerText = "Leave room";
-          roomStateButton.className = "leave-room-btn";
-        } else {
-          roomStateButton.innerText = "Join room";
-          roomStateButton.className = "join-room-btn";
-        }
-
-        roomStateButton.disabled = false;
       });
 
       socket.on("connect_error", (err) => {
@@ -648,6 +948,94 @@
       socket.on("disconnect", () => {
         statusIndicatorBox.innerText = "disconnected";
       });
+
+      // Setup GraphQL subscriptions if needed
+      function setupGraphQLSubscriptions(roomId) {
+        if (!graphqlClient) return;
+
+        // Message subscription
+        const messageAddedSubscription = `
+          subscription MessageAdded($roomId: ID!) {
+            messageAdded(roomId: $roomId) {
+              id
+              sender
+              text
+              timestamp
+            }
+          }
+        `;
+
+        const unsubMessage = graphqlClient.subscribe(
+          {
+            query: messageAddedSubscription,
+            variables: { roomId },
+          },
+          {
+            next: (data) => {
+              const message = data.data.messageAdded;
+              chatArea.innerHTML += renderChatBubble(message);
+              scrollToBottom();
+            },
+            error: (error) => console.error("Subscription error:", error),
+            complete: () => console.log("Subscription complete"),
+          }
+        );
+
+        // User joined subscription
+        const userJoinedSubscription = `
+          subscription UserJoined($roomId: ID!) {
+            userJoined(roomId: $roomId)
+          }
+        `;
+
+        const unsubUserJoined = graphqlClient.subscribe(
+          {
+            query: userJoinedSubscription,
+            variables: { roomId },
+          },
+          {
+            next: (data) => {
+              const username = data.data.userJoined;
+              chatArea.innerHTML += renderSystemMessage(
+                `${username} joined the room`
+              );
+              scrollToBottom();
+            },
+            error: (error) => console.error("Subscription error:", error),
+          }
+        );
+
+        // User left subscription
+        const userLeftSubscription = `
+          subscription UserLeft($roomId: ID!) {
+            userLeft(roomId: $roomId)
+          }
+        `;
+
+        const unsubUserLeft = graphqlClient.subscribe(
+          {
+            query: userLeftSubscription,
+            variables: { roomId },
+          },
+          {
+            next: (data) => {
+              const username = data.data.userLeft;
+              chatArea.innerHTML += renderSystemMessage(
+                `${username} left the room`
+              );
+              scrollToBottom();
+            },
+            error: (error) => console.error("Subscription error:", error),
+          }
+        );
+
+        // Return a cleanup function
+        return () => {
+          unsubMessage();
+          unsubUserJoined();
+          unsubUserLeft();
+        };
+      }
 
       setInterval(() => {
         socket.emit("heartbeat");

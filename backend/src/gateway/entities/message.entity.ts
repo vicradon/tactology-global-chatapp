@@ -24,4 +24,12 @@ export class Message {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  get sender(): string {
+    return this.username;
+  }
+
+  get text(): string {
+    return this.message;
+  }
 }

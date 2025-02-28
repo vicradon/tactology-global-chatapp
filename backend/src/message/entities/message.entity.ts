@@ -8,7 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
-import { Room } from 'src/rooms/entities/room.entity';
+import { Room } from 'src/room/entities/room.entity';
 import { MessageType } from '../dto/create-message.dto';
 
 @Entity('messages')

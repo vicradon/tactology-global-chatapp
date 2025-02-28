@@ -1,5 +1,5 @@
 import { Exclude } from 'class-transformer';
-import { Room } from 'src/rooms/entities/room.entity';
+import { Room } from 'src/room/entities/room.entity';
 import {
   Entity,
   Column,

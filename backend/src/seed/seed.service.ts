@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Message } from 'src/message/entities/message.entity';
-import { Room } from 'src/rooms/entities/room.entity';
+import { Room } from 'src/room/entities/room.entity';
 import { User, UserRole } from 'src/users/entities/user.entity';
 import { MessageType } from 'src/message/dto/create-message.dto';
 

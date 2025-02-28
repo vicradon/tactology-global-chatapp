@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Socket } from 'socket.io';
-import { RoomService } from 'src/rooms/room.service';
+import { RoomService } from 'src/room/room.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { JwtService } from '@nestjs/jwt';
 import { jwtConstants } from 'src/auth/constants';
@@ -11,7 +11,7 @@ import { unsign } from 'cookie-signature';
 import { Message } from 'src/message/entities/message.entity';
 import { CreateMessageDto } from 'src/message/dto/create-message.dto';
 import { User } from 'src/users/entities/user.entity';
-import { Room } from 'src/rooms/entities/room.entity';
+import { Room } from 'src/room/entities/room.entity';
 
 type NewMessageDto = {
   username: string;

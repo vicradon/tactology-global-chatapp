@@ -12,7 +12,8 @@ export const databaseConfig = (
   password: configService.get<string>('DB_PASSWORD', 'postgres'),
   database: configService.get<string>('DB_NAME', 'chat_app'),
   entities: [join(__dirname, '..', '**/*.entity{.ts,.js}')],
-  synchronize: configService.get('NODE_ENV') !== 'production',
+  synchronize: true,
+  // configService.get('NODE_ENV') !== 'production', deal with migrations later
   logging: configService.get('DB_LOGGING', 'false') === 'true',
   extra: {
     ssl: configService.get('DB_SSL_REQUIRE', 'false') === 'true',

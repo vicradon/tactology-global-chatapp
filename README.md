@@ -7,13 +7,176 @@ Deployed Backend: https://dachatapp.onrender.com
 
 ## Events
 
-1. `getRooms` - client fires this event to fetch a list of available rooms
+1. `availableRooms` - client fires this event to fetch a list of available rooms. It takes an empty request body. Server responds on the same event name, a list of available rooms.
 1. `joinRoom` - client fires this event to join a room
 1. `leaveRoom` - client fires this event to leave a room
 1. `messageRoom` - client fires this event to send a message to a room
-1. `previousRoomMessage` - server fires this event when a user joins a room to return the last 50 messages
+1. `roomMessageHistory` - server fires this event when a user joins a room. It returns last 50 messages. The client can also fire this event to get the last 50 messages from the room.
 1. `newRoomMessage` - server fires this event when a new message enters a room
 1. `notification` - server fires this event for notifications on user triggered activities such as failed attempts to join or leave a room
+
+## Events Request and Response
+
+### availableRooms
+
+Request - {}
+Response
+
+```json
+   {
+    "data": [
+        {
+            "id": "a0020def-9f63-4e7b-b5a4-f6d2dd1d1d74",
+            "name": "General",
+            "created_by_id": 1,
+            "createdAt": "2025-02-28T13:59:03.754Z",
+            "meta": {
+                "isGeneral": true
+            },
+            "created_by": {
+                "id": 1,
+                "username": "system",
+                "role": "system"
+            }
+        },
+        {
+            "id": "0416dae3-0636-42b8-b968-f5d68e00f8ce",
+            "name": "Anime",
+            "created_by_id": 1,
+            "createdAt": "2025-02-28T13:59:03.757Z",
+            "meta": {},
+            "created_by": {
+                "id": 1,
+                "username": "system",
+                "role": "system"
+            }
+        },
+        {
+            "id": "d41302fb-559d-483d-9403-a2d5d696335e",
+            "name": "Video Games",
+            "created_by_id": 1,
+            "createdAt": "2025-02-28T13:59:03.763Z",
+            "meta": {},
+            "created_by": {
+                "id": 1,
+                "username": "system",
+                "role": "system"
+            }
+        }
+    ]
+}
+```
+
+### roomMessageHistory
+
+- Request: { roomId: "<ROOM-UUID>" }
+- Response
+
+```json
+[
+    {
+        "id": "5738f778-9d56-46a1-9dae-8b265be4f256",
+        "text": "guy was added",
+        "messageType": "system",
+        "timestamp": "2025-02-28T13:59:03.786Z",
+        "updatedAt": "2025-02-28T13:59:03.786Z",
+        "sender": "system"
+    },
+    {
+        "id": "3fa4831b-90f4-41a2-bc73-6a9bf6b09744",
+        "text": "fawks was added",
+        "messageType": "system",
+        "timestamp": "2025-02-28T13:59:03.798Z",
+        "updatedAt": "2025-02-28T13:59:03.798Z",
+        "sender": "system"
+    }
+]
+```
+
+### joinRoom
+
+- Request: { roomId: "<ROOM-UUID>" }
+- Response
+  - to user: notification
+  ```json
+  {
+    "text": "You joined Anime",
+    "sender": "system",
+    "messageType": "system",
+    "timestamp": 1740757678980
+  }
+  ```
+
+  - to users in room
+  ```json
+  {
+    "text": "fawks joined",
+    "sender": "system",
+    "messageType": "system",
+    "timestamp": 1740757754353
+  }
+  ```
+
+### leaveRoom
+
+- Request: { roomId: "<ROOM-UUID>" }
+- Response
+  - to user: notification
+  ```json
+  {
+    "text": "You left Anime",
+    "sender": "system",
+    "messageType": "system",
+    "timestamp": 1740757678980
+  }
+  ```
+
+  - to users in room
+  ```json
+  {
+    "text": "guy left",
+    "sender": "system",
+    "messageType": "system",
+    "timestamp": 1740757754353
+  }
+  ```
+
+### messageRoom
+
+- Request: { roomId: "<ROOM-UUID>", text: "Eren Yaeger was a villian" }
+- Response:
+  ```json
+  {
+    "sender": "guy",
+    "timestamp": "2025-02-28T15:53:18.418Z",
+    "text": "Eren Yaeger was a villian"
+  }
+  ```
+
+### newRoomMessage (server sent to room case)
+
+- Request: N/A
+- Response:
+  ```json
+  {
+    "sender": "guy",
+    "timestamp": "2025-02-28T15:53:18.418Z",
+    "text": "Eren Yaeger was a villian"
+  }
+  ```
+
+### notification
+
+- Request: one of join room, leave room, etc
+- Response
+  ```json
+  {
+    "text": "You left Anime",
+    "sender": "system",
+    "messageType": "system",
+    "timestamp": 1740757801082
+  }
+  ```
 
 ## Seeded Entries
 

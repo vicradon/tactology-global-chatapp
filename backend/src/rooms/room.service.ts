@@ -9,6 +9,10 @@ import { Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
 import { User } from '../users/entities/user.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { SerializationContextService } from 'src/context/serialization.context';
+import { instanceToPlain } from 'class-transformer';
+import { Message } from 'src/message/entities/message.entity';
+import { MessageType } from 'src/message/dto/create-message.dto';
 
 @Injectable()
 export class RoomService {
@@ -17,6 +21,9 @@ export class RoomService {
     private roomRepository: Repository<Room>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Message)
+    private messageRepository: Repository<Message>,
+    private serializationContext: SerializationContextService,
   ) {}
 
   async createRoom(
@@ -71,6 +78,19 @@ export class RoomService {
 
     room.members.push(user);
 
+    const systemUser = await this.userRepository.findOne({
+      where: { username: 'system' },
+    });
+
+    const joinMessage = this.messageRepository.create({
+      sender: systemUser,
+      text: `${user.username} joined`,
+      messageType: MessageType.SYSTEM,
+      room,
+    });
+
+    await this.messageRepository.save(joinMessage);
+
     return this.roomRepository.save(room);
   }
 
@@ -98,14 +118,38 @@ export class RoomService {
       throw new BadRequestException('User is not a member of this room');
     }
 
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    const systemUser = await this.userRepository.findOne({
+      where: { username: 'system' },
+    });
+
+    const leaveMessage = this.messageRepository.create({
+      sender: systemUser,
+      text: `${user.username} left`,
+      messageType: MessageType.SYSTEM,
+      room,
+    });
+    await this.messageRepository.save(leaveMessage);
+
     room.members.splice(memberIndex, 1);
     await this.roomRepository.save(room);
   }
 
-  async getAllRooms(): Promise<Room[]> {
-    return this.roomRepository.find({
-      relations: ['created_by', 'members'],
+  async getAllRooms(withMembers = false): Promise<Room[]> {
+    const relations = ['created_by'];
+
+    if (withMembers) {
+      relations.push('members');
+    }
+
+    const rooms = await this.roomRepository.find({
+      relations,
     });
+
+    return this.serializationContext.needsSerialization()
+      ? (instanceToPlain(rooms) as Room[])
+      : rooms;
   }
 
   async checkIfUserInRoom(roomId: string, userId: number): Promise<boolean> {

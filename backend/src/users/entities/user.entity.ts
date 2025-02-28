@@ -8,9 +8,13 @@ import {
   ManyToMany,
 } from 'typeorm';
 
-@Entity()
+export enum UserRole {
+  SYSTEM = 'system',
+  USER = 'user',
+}
+
+@Entity('users')
 export class User {
-  @Exclude()
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -21,8 +25,8 @@ export class User {
   @Exclude()
   password: string;
 
-  @Column({ default: 'user' })
-  role: string;
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role: UserRole;
 
   @OneToMany(() => Room, (room) => room.created_by)
   createdRooms: Room[];

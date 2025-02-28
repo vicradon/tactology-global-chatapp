@@ -1,65 +1,32 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { WsException } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
-import { jwtConstants } from 'src/auth/constants';
-import { unsign } from 'cookie-signature';
+import { GatewayService } from 'src/gateway/gateway.service';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
 @Injectable()
 export class WsAuthGuard implements CanActivate {
-  constructor(private jwtService: JwtService) {}
+  constructor(private gatewayService: GatewayService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client = context.switchToWs().getClient<Socket>();
 
-    const token = this.extractTokenFromSocket(client);
+    let tokenError: Error | null = null;
+    const nextFunction = (error?: Error) => {
+      if (error) tokenError = error;
+    };
 
-    if (!token) {
-      throw new WsException('Unauthorized');
+    await this.gatewayService.createAuthMiddleware()(client, nextFunction);
+
+    if (tokenError) {
+      throw new WsException(tokenError.message || 'Unauthorized');
     }
 
-    try {
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: jwtConstants.secret,
-      });
-
-      client.data.user = payload;
-
-      return true;
-    } catch {
-      throw new WsException('Unauthorized');
-    }
-  }
-
-  private extractTokenFromSocket(client: Socket): string | undefined {
-    const cookieString = client.handshake.headers.cookie || '';
-    const cookies = this.parseCookies(cookieString);
-
-    const signedCookie = decodeURIComponent(cookies?.['accessToken']);
-
-    if (!signedCookie) return undefined;
-
-    if (signedCookie.startsWith('s:')) {
-      const value = signedCookie.slice(2);
-      const unsigned = unsign(value, process.env.COOKIE_SIGNING_KEY);
-      return unsigned || undefined;
+    if (!client.data.user) {
+      throw new WsException('User authentication failed');
     }
 
-    return undefined;
-  }
-
-  private parseCookies(cookieString: string): Record<string, string> {
-    const cookies: Record<string, string> = {};
-
-    cookieString.split(';').forEach((cookie) => {
-      const [name, value] = cookie.trim().split('=');
-      if (name && value) {
-        cookies[name] = value;
-      }
-    });
-
-    return cookies;
+    return true;
   }
 }

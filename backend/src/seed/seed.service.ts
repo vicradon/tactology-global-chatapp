@@ -1,97 +1,140 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
-import { Room } from '../rooms/entities/room.entity';
-import { User } from '../users/entities/user.entity';
 import * as bcrypt from 'bcrypt';
+import { Message } from 'src/message/entities/message.entity';
+import { Room } from 'src/rooms/entities/room.entity';
+import { User, UserRole } from 'src/users/entities/user.entity';
+import { MessageType } from 'src/message/dto/create-message.dto';
 
 @Injectable()
 export class SeedService implements OnModuleInit {
   private readonly logger = new Logger(SeedService.name);
+  private systemUser: User = undefined;
 
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Message)
+    private messageRepository: Repository<Message>,
   ) {}
 
   async onModuleInit() {
-    await this.seedDefaultRoom();
+    await this.seedUsers();
+    await this.seedDefaultRooms();
   }
 
-  async seedDefaultRoom() {
+  async createUser(username: string, password: string, isSystemUser = false) {
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = this.userRepository.create({
+      username,
+      password: hashedPassword,
+      role: isSystemUser ? UserRole.SYSTEM : UserRole.USER,
+    });
+
+    return this.userRepository.save(user);
+  }
+
+  async seedUsers() {
     try {
-      const existingRoom = await this.roomRepository.findOne({
-        where: { name: 'general' },
+      this.systemUser = await this.userRepository.findOne({
+        where: { username: 'system' },
       });
 
-      if (!existingRoom) {
-        let systemUser = await this.userRepository.findOne({
-          where: { username: 'system' },
-        });
-
-        if (!systemUser) {
-          const salt = await bcrypt.genSalt();
-          const hashedPassword = await bcrypt.hash(
-            process.env.SYSTEM_USER_PASSWORD,
-            salt,
-          );
-
-          systemUser = this.userRepository.create({
-            username: 'system',
-            password: hashedPassword,
-            role: 'system',
-          });
-          await this.userRepository.save(systemUser);
-          this.logger.log('System user created for general room creation');
-        }
-
-        const generalRoom = this.roomRepository.create({
-          name: 'general',
-          created_by: systemUser,
-          created_by_id: systemUser.id,
-          members: [systemUser],
-          meta: { isGeneral: true },
-        });
-
-        await this.roomRepository.save(generalRoom);
-        this.logger.log('Default general room created successfully');
-
-        const allUsers = await this.userRepository.find({
-          where: { username: Not('system') },
-        });
-
-        if (allUsers.length > 0) {
-          const room = await this.roomRepository.findOne({
-            where: { name: 'general' },
-            relations: ['members'],
-          });
-
-          room.members = [...room.members, ...allUsers];
-          await this.roomRepository.save(room);
-          this.logger.log(
-            `Added ${allUsers.length} existing users to general room`,
-          );
-        }
-      } else {
-        this.logger.log('Default general room already exists');
+      if (!this.systemUser) {
+        this.systemUser = await this.createUser(
+          'system',
+          process.env.SYSTEM_USER_PASSWORD,
+          true,
+        );
+        this.logger.log('System user created');
       }
+
+      const otherUsers = [
+        { username: 'guy', password: 'the-guy' },
+        { username: 'fawks', password: 'the-fawks' },
+      ];
+
+      await Promise.all(
+        otherUsers.map(async (user) => {
+          const isExisting = await this.userRepository.findOne({
+            where: { username: user.username },
+          });
+
+          if (!isExisting) {
+            await this.createUser(user.username, user.password);
+          }
+        }),
+      );
     } catch (error) {
-      this.logger.error('Failed to seed default room:', error);
+      this.logger.error('Failed to seed users:', error);
     }
   }
 
-  async addUserToGeneralRoom(user: User): Promise<void> {
+  async seedDefaultRooms() {
     try {
-      const generalRoom = await this.roomRepository.findOne({
-        where: { name: 'general' },
-        relations: ['members'],
+      if (!this.systemUser) return;
+
+      const defaultRooms = [
+        { name: 'General', meta: { isGeneral: true } },
+        { name: 'Anime', meta: {} },
+        { name: 'Video Games', meta: {} },
+      ];
+
+      await Promise.all(
+        defaultRooms.map(async (roomData) => {
+          let existingRoom = await this.roomRepository.findOne({
+            where: { name: roomData.name },
+          });
+
+          if (!existingRoom) {
+            const newRoom = this.roomRepository.create({
+              ...roomData,
+              created_by: this.systemUser,
+              created_by_id: this.systemUser.id,
+              members: roomData.meta.isGeneral ? [this.systemUser] : [],
+            });
+
+            await this.roomRepository.save(newRoom);
+            this.logger.log(`${roomData.name} room created`);
+          }
+        }),
+      );
+
+      const allUsers = await this.userRepository.find({
+        where: { username: Not('system') },
       });
 
+      if (allUsers.length > 0) {
+        const generalRoom = await this.roomRepository.findOne({
+          where: { meta: { isGeneral: true } },
+          relations: ['members'],
+        });
+
+        for (const user of allUsers) {
+          await this.addUserToGeneralRoom(user, generalRoom);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to seed default rooms:', error);
+    }
+  }
+
+  async addUserToGeneralRoom(
+    user: User,
+    generalRoom: Room = undefined,
+  ): Promise<void> {
+    try {
+      // this ensures we do less fetching when we are calling this over and over again
       if (!generalRoom) {
-        this.logger.error('General room not found when trying to add new user');
-        return;
+        generalRoom = await this.roomRepository.findOne({
+          where: { meta: { isGeneral: true } },
+          relations: ['members'],
+        });
       }
 
       const isMember = generalRoom.members.some(
@@ -101,10 +144,22 @@ export class SeedService implements OnModuleInit {
       if (!isMember) {
         generalRoom.members.push(user);
         await this.roomRepository.save(generalRoom);
+        await this.createSystemMessage(generalRoom, user);
         this.logger.log(`User ${user.username} added to general room`);
       }
     } catch (error) {
       this.logger.error(`Failed to add user to general room: ${error.message}`);
     }
+  }
+
+  private async createSystemMessage(room: Room, user: User) {
+    const joinMessage = this.messageRepository.create({
+      sender: this.systemUser,
+      text: `${user.username} was added`,
+      messageType: MessageType.SYSTEM,
+      room,
+    });
+
+    await this.messageRepository.save(joinMessage);
   }
 }

@@ -37,6 +37,9 @@ export class AuthController {
     return {
       status: 'success',
       message: 'Registration successful',
+      data: {
+        accessToken: `Bearer ${accessToken}`,
+      },
     };
   }
 
@@ -56,10 +59,13 @@ export class AuthController {
     return {
       status: 'success',
       message: 'login successful',
+      data: {
+        accessToken: `Bearer ${accessToken}`,
+      },
     };
   }
 
-  bakeCookie(response: Response, accessToken: string) {
+  private bakeCookie(response: Response, accessToken: string) {
     response.cookie('accessToken', accessToken, {
       httpOnly: true,
       signed: true,

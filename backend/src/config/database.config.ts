@@ -14,6 +14,6 @@ export const databaseConfig = (
   synchronize: configService.get('NODE_ENV') !== 'production',
   logging: configService.get('DB_LOGGING', 'false') === 'true',
   extra: {
-    ssl: configService.get('DB_SSL_REQUIRE', 'false'),
+    ssl: configService.get('DB_SSL_REQUIRE', 'false') === 'true',
   },
 });

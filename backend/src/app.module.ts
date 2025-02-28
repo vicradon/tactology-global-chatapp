@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { databaseConfig } from './config/database.config';
 import { RoomModule } from './rooms/room.module';
 import { SeedModule } from './seed/seed.module';
+import { MessageModule } from './message/message.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SeedModule } from './seed/seed.module';
     UsersModule,
     RoomModule,
     SeedModule,
+    MessageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

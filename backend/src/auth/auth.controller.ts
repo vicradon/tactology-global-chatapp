@@ -20,6 +20,14 @@ import { User } from 'src/users/dto/users.dto';
 
 @Controller('auth')
 export class AuthController {
+  private cookieConfig = {
+    httpOnly: true,
+    signed: true,
+    secure: true,
+    sameSite: 'none' as const,
+    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+  };
+
   constructor(
     private authService: AuthService,
     private usersService: UsersService,
@@ -31,13 +39,8 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const { accessToken } = await this.authService.register(createUserDto);
-
     this.bakeCookie(response, accessToken);
-
-    return {
-      status: 'success',
-      message: 'Registration successful',
-    };
+    return { status: 'success', message: 'Registration successful' };
   }
 
   @HttpCode(HttpStatus.OK)
@@ -50,23 +53,12 @@ export class AuthController {
       signInDto.username,
       signInDto.password,
     );
-
     this.bakeCookie(response, accessToken);
-
-    return {
-      status: 'success',
-      message: 'login successful',
-    };
+    return { status: 'success', message: 'Login successful' };
   }
 
-  bakeCookie(response: Response, accessToken: string) {
-    response.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      signed: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
-    });
+  private bakeCookie(response: Response, accessToken: string) {
+    response.cookie('accessToken', accessToken, this.cookieConfig);
   }
 
   @UseGuards(JWTAuthGuard)
@@ -90,17 +82,8 @@ export class AuthController {
       throw new NotFoundException('User not found');
     }
 
-    response.clearCookie('accessToken', {
-      httpOnly: true,
-      signed: true,
-      secure: true,
-      sameSite: true,
-    });
-
-    return {
-      status: 'success',
-      message: 'logout successful',
-    };
+    response.clearCookie('accessToken', this.cookieConfig);
+    return { status: 'success', message: 'Logout successful' };
   }
 
   @Post('system-login')

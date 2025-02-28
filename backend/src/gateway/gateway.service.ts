@@ -54,7 +54,6 @@ export class GatewayService {
     });
 
     const savedMessage = await this.messageRepository.save(message);
-    console.log(savedMessage);
     const sender = await this.userRepository.findOneBy({
       id: messageData.senderId,
     });

@@ -4,7 +4,6 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConnectedSocket,
@@ -14,9 +13,7 @@ import {
   WebSocketServer,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { unsign } from 'cookie-signature';
 import { Server, Socket } from 'socket.io';
-import { jwtConstants } from 'src/auth/constants';
 import { WsAuthGuard } from './gateway.auth.guard';
 import { GatewayService } from './gateway.service';
 import { Room } from '../room/entities/room.entity';
@@ -24,15 +21,10 @@ import * as dotenv from 'dotenv';
 import { RoomService } from 'src/room/room.service';
 import { SerializationContextService } from 'src/context/serialization.context';
 import { MessageType } from 'src/message/dto/create-message.dto';
+import { timestamp } from 'rxjs';
 dotenv.config();
 
-type NewMessageDto = {
-  sender: string;
-  text: string;
-  timestamp?: string;
-  roomId?: string;
-};
-
+@UseGuards(WsAuthGuard)
 @WebSocketGateway({
   cors: {
     origin: JSON.parse(process.env.ALLOWED_ORIGINS),
@@ -41,7 +33,6 @@ type NewMessageDto = {
 })
 export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   constructor(
-    private jwtService: JwtService,
     private gatewayService: GatewayService,
     private roomService: RoomService,
     private eventEmitter: EventEmitter2,
@@ -67,7 +58,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         this.broadcastOnlineUsers();
       } catch (error) {
         console.error('Error in connection handler:', error);
-        socket.emit('previousRoomMessage', []);
+        socket.emit('roomMessageHistory', []);
       }
     });
   }
@@ -92,19 +83,41 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.handleDisconnect(socket);
   }
 
-  @UseGuards(WsAuthGuard)
-  @SubscribeMessage('getRooms')
+  @SubscribeMessage('availableRooms')
   @UseInterceptors(ClassSerializerInterceptor)
-  async onGetRooms() {
+  async onGetRooms(@ConnectedSocket() client: Socket) {
     const availableRooms = await this.serializationContext.runWithSerialization(
       () => this.roomService.getAllRooms(),
     );
-    this.server.emit('availableRooms', {
+    client.emit('availableRooms', {
       data: availableRooms,
     });
   }
 
-  @UseGuards(WsAuthGuard)
+  @SubscribeMessage('roomMessageHistory')
+  @UseInterceptors(ClassSerializerInterceptor)
+  async onRoomMessageHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string },
+  ) {
+    try {
+      const messages = await this.gatewayService.getMessagesByRoom(
+        data.roomId,
+        50,
+      );
+      client.emit(
+        'roomMessageHistory',
+        messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
+      );
+    } catch (error) {
+      client.emit('notification', {
+        sender: 'system',
+        text: `Error fetching room message history: ${error}`,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
   @SubscribeMessage('messageRoom')
   async onNewMessage(
     @MessageBody() data: { roomId: string; text: string },
@@ -166,7 +179,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     });
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('joinRoom')
   async onJoinRoom(
     @MessageBody() data: { roomId: string },
@@ -204,7 +216,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       });
 
       const messages = await this.gatewayService.getMessagesByRoom(room.id, 50);
-      client.emit('previousRoomMessage', messages);
+      client.emit(
+        'roomMessageHistory',
+        messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
+      );
 
       client.to(room.id).emit('newRoomMessage', {
         text: `${client.data.user.username} joined`,
@@ -223,7 +238,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     }
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('leaveRoom')
   async onLeaveRoom(
     @MessageBody() data: { roomId: string },
@@ -278,7 +292,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     }
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('switchToRoom')
   async onSwitchToRoom(
     @MessageBody() data: { roomId: string },
@@ -298,14 +311,14 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     if (userInRoom) {
       client.join(roomId);
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
-      client.emit('previousRoomMessage', messages);
+      client.emit('roomMessageHistory', messages);
       client.emit('roomMembershipStatus', {
         roomId,
         isMember: true,
         action: 'NONE',
       });
     } else {
-      client.emit('previousRoomMessage', []);
+      client.emit('roomMessageHistory', []);
       client.emit('notification', {
         text: 'You must join the room to see messages or send messages',
         sender: 'system',
@@ -320,7 +333,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     }
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('checkRoomMembership')
   async onCheckRoomMembership(
     @MessageBody() data: { roomId: string },
@@ -343,7 +355,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     }
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('roomCreated')
   async onRoomCreated(
     @MessageBody() data: { room: Room },
@@ -357,14 +368,12 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.server.emit('newRoomCreated', data.room);
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
     const onlineUsers = this.gatewayService.getOnlineUsers();
     client.emit('onlineUsersUpdate', onlineUsers);
   }
 
-  @UseGuards(WsAuthGuard)
   @SubscribeMessage('heartbeat')
   handleHeartbeat(@ConnectedSocket() client: Socket) {
     if (client.data?.user?.sub) {

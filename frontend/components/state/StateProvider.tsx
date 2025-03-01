@@ -22,6 +22,7 @@ type Message = {
 
 // Define the state type explicitly
 type AppState = {
+  isAuthenticated: boolean;
   activeRoom: Room;
   rooms: Room[];
   messages: Message[];
@@ -34,6 +35,7 @@ type AppState = {
 };
 
 const initialState: AppState = {
+  isAuthenticated: false,
   activeRoom: {
     name: "General",
     id: "room-1",

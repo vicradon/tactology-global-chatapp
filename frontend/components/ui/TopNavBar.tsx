@@ -1,7 +1,19 @@
-import { Box, Button, Flex, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Text, useBreakpointValue } from "@chakra-ui/react";
 import { ColorModeButton } from "./color-mode";
+import { LayoutDrawer } from "./LayoutDrawer";
+import React, { useState } from "react";
+import { useStateContext } from "../state/StateProvider";
+import { SigninButton, LogoutButton } from "./AuthComponents";
 
-export const TopNavBar = () => {
+type Props = {
+  drawerChildren: React.ReactNode;
+};
+
+export const TopNavBar = ({ drawerChildren }: Props) => {
+  const [open, setOpen] = useState(false);
+  const isMobile = useBreakpointValue({ base: true, md: false });
+  const { state } = useStateContext();
+
   return (
     <Flex
       border={"2px solid black"}
@@ -11,15 +23,23 @@ export const TopNavBar = () => {
       padding="1rem"
       borderRadius={"1rem"}
     >
-      <Text>Signed in as: Osi</Text>
-      <Flex columnGap={"1rem"}>
-        <Button
-          border={"1px solid black"}
-          borderRadius={"1rem"}
-          variant={"outline"}
+      <Flex columnGap={"1rem"} alignItems={"center"}>
+        <LayoutDrawer
+          isMobile={isMobile || false}
+          open={open}
+          setOpen={setOpen}
         >
-          Logout
-        </Button>
+          {drawerChildren}
+        </LayoutDrawer>
+        {state.isAuthenticated ? (
+          <Text>Signed in as: Osi</Text>
+        ) : (
+          <Text>Not signed in</Text>
+        )}
+      </Flex>
+
+      <Flex alignItems={"center"} columnGap={"1rem"}>
+        {state.isAuthenticated ? <LogoutButton /> : <SigninButton />}
         <ColorModeButton />
       </Flex>
     </Flex>

@@ -1,4 +1,13 @@
-import { Button, HStack, Input, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Flex,
+  Grid,
+  HStack,
+  Input,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 
 import {
   DialogRoot,
@@ -12,6 +21,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useState } from "react";
+import { useFetchMutation } from "@/network/fetch";
+import { toaster } from "@/components/ui/toaster";
+import { useStateContext } from "../state/StateProvider";
 
 interface AuthDialogProps {
   open: boolean;
@@ -20,10 +32,64 @@ interface AuthDialogProps {
 
 export function AuthDialog({ open, onClose }: AuthDialogProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
+  const { dispatch } = useStateContext();
+  const [formState, setFormState] = useState({
+    username: "",
+    password: "",
+  });
+
+  const {
+    mutate: triggerLogin,
+    loading: isLoginLoading,
+    error: loginError,
+  } = useFetchMutation("/auth/login");
+
+  const {
+    mutate: triggerRegister,
+    loading: isRegisterLoading,
+    error: registerError,
+  } = useFetchMutation("/auth/register");
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormState((prevState) => ({
+      ...prevState,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trigger = mode === "login" ? triggerLogin : triggerRegister;
+
+    try {
+      await trigger(formState);
+
+      dispatch({
+        type: "UPDATE_AUTH_STATE",
+        payload: true,
+      });
+
+      toaster.success({
+        title: "Success",
+        description:
+          mode === "login"
+            ? "Logged in successfully!"
+            : "Registered successfully!",
+      });
+
+      onClose();
+    } catch (error) {
+      toaster.error({
+        title: "Authentication Error",
+        description: (error as Error).message || "Something went wrong.",
+      });
+    }
+  };
 
   return (
     <DialogRoot open={open} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent onSubmit={handleSubmit} as={"form"}>
         <DialogHeader>
           <DialogTitle>{mode === "login" ? "Sign In" : "Sign Up"}</DialogTitle>
           <DialogCloseTrigger />
@@ -31,18 +97,34 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
 
         <DialogBody>
           <VStack gap={4} align="stretch">
-            {mode === "register" && <Input placeholder="Full Name" />}
-            <Input placeholder="Email" type="email" />
-            <Input placeholder="Password" type="password" />
+            <Input
+              name="username"
+              value={formState.username}
+              onChange={handleInputChange}
+              placeholder="Username e.g. BugsBunny"
+              type="text"
+            />
+            <Input
+              name="password"
+              value={formState.password}
+              onChange={handleInputChange}
+              placeholder="Password"
+              type="password"
+            />
           </VStack>
         </DialogBody>
 
         <DialogFooter>
-          <VStack w="full">
-            <Button colorScheme="blue" w="full">
+          <Grid width="100%" rowGap="0.5rem">
+            <Button
+              type="submit"
+              colorScheme="blue"
+              w="full"
+              loading={isLoginLoading || isRegisterLoading}
+            >
               {mode === "login" ? "Login" : "Register"}
             </Button>
-            <HStack gap={2}>
+            <Flex justifyContent="space-between" alignItems="center">
               <Text fontSize="sm">
                 {mode === "login"
                   ? "Don't have an account?"
@@ -50,14 +132,14 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
               </Text>
               <Button
                 size="sm"
-                variant="solid"
+                variant="plain"
                 colorScheme="blue"
                 onClick={() => setMode(mode === "login" ? "register" : "login")}
               >
                 {mode === "login" ? "Sign Up" : "Sign In"}
               </Button>
-            </HStack>
-          </VStack>
+            </Flex>
+          </Grid>
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
@@ -71,7 +153,7 @@ export function SigninButton() {
     <>
       <Button
         variant={"outline"}
-        border={"2px solid black"}
+        border={"2px solid"}
         onClick={() => setDialogOpen(true)}
       >
         Sign In
@@ -82,12 +164,33 @@ export function SigninButton() {
 }
 
 export const LogoutButton = () => {
-  const handleLogout = () => {
-    window.location.reload();
+  const { mutate, loading, error } = useFetchMutation("/auth/logout");
+  const { dispatch } = useStateContext();
+
+  const handleLogout = async () => {
+    try {
+      await mutate();
+
+      dispatch({
+        type: "UPDATE_AUTH_STATE",
+        payload: false,
+      });
+
+      toaster.success({
+        title: "Logout successfully",
+      });
+    } catch (error) {
+      toaster.error({
+        title: "Authentication Error",
+        description: (error as Error).message || "Something went wrong.",
+      });
+    }
   };
+
   return (
     <Button
-      border={"1px solid black"}
+      loading={loading}
+      border={"1px solid"}
       borderRadius={"1rem"}
       variant={"outline"}
       onClick={handleLogout}

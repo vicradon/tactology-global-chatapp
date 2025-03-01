@@ -25,6 +25,14 @@ export class AuthController {
     private usersService: UsersService,
   ) {}
 
+  private cookieConfig = {
+    httpOnly: true,
+    signed: true,
+    secure: true,
+    sameSite: 'none' as const,
+    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+  };
+
   @Post('/register')
   async register(
     @Body() createUserDto: CreateUserDto,
@@ -66,13 +74,7 @@ export class AuthController {
   }
 
   private bakeCookie(response: Response, accessToken: string) {
-    response.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      signed: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
-    });
+    response.cookie('accessToken', accessToken, this.cookieConfig);
   }
 
   @UseGuards(JWTAuthGuard)
@@ -96,12 +98,7 @@ export class AuthController {
       throw new NotFoundException('User not found');
     }
 
-    response.clearCookie('accessToken', {
-      httpOnly: true,
-      signed: true,
-      secure: true,
-      sameSite: true,
-    });
+    response.clearCookie('accessToken', this.cookieConfig);
 
     return {
       status: 'success',

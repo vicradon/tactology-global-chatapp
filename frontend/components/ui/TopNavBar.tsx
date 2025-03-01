@@ -16,7 +16,7 @@ export const TopNavBar = ({ drawerChildren }: Props) => {
 
   return (
     <Flex
-      border={"2px solid black"}
+      border={"2px solid"}
       justifyContent={"space-between"}
       alignItems={"center"}
       as="nav"
@@ -32,7 +32,9 @@ export const TopNavBar = ({ drawerChildren }: Props) => {
           {drawerChildren}
         </LayoutDrawer>
         {state.isAuthenticated ? (
-          <Text>Signed in as: Osi</Text>
+          <Text>
+            Signed in as: <b>{state.profile.username}</b>
+          </Text>
         ) : (
           <Text>Not signed in</Text>
         )}

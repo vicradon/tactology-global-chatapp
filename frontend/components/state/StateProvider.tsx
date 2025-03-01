@@ -1,4 +1,10 @@
-import { createContext, useReducer, Dispatch, useContext } from "react";
+import {
+  createContext,
+  useReducer,
+  Dispatch,
+  useContext,
+  useMemo,
+} from "react";
 
 // Define types first to avoid mismatch
 type User = {
@@ -20,9 +26,16 @@ type Message = {
   roomId: string;
 };
 
+export type Profile = {
+  id: number;
+  username: string;
+  role: string;
+};
+
 // Define the state type explicitly
 type AppState = {
   isAuthenticated: boolean;
+  profile: Profile;
   activeRoom: Room;
   rooms: Room[];
   messages: Message[];
@@ -36,9 +49,14 @@ type AppState = {
 
 const initialState: AppState = {
   isAuthenticated: false,
+  profile: {
+    username: "",
+    role: "user",
+    id: 0,
+  },
   activeRoom: {
-    name: "General",
-    id: "room-1",
+    name: "",
+    id: "",
   },
   rooms: [
     { id: "room-1", name: "General" },
@@ -287,6 +305,8 @@ const initialState: AppState = {
 };
 
 type ACTIONTYPE =
+  | { type: "UPDATE_AUTH_STATE"; payload: boolean }
+  | { type: "UPDATE_PROFILE"; payload: Profile }
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "UPDATE_MESSAGES"; payload: Message[] }
   | { type: "DELETE_MESSAGE"; payload: string }
@@ -316,6 +336,16 @@ type Props = {
 export const StateProvider = ({ children }: Props) => {
   const reducer = (state: AppState, action: ACTIONTYPE): AppState => {
     switch (action.type) {
+      case "UPDATE_AUTH_STATE":
+        return {
+          ...state,
+          isAuthenticated: action.payload,
+        };
+      case "UPDATE_PROFILE":
+        return {
+          ...state,
+          profile: action.payload,
+        };
       case "ADD_MESSAGE":
         return {
           ...state,
@@ -404,9 +434,10 @@ export const StateProvider = ({ children }: Props) => {
   };
 
   const [state, dispatch] = useReducer(reducer, initialState);
+  const memoizedcontext = useMemo(() => ({ state, dispatch }), [state]);
 
   return (
-    <StateContext.Provider value={{ state, dispatch }}>
+    <StateContext.Provider value={memoizedcontext}>
       {children}
     </StateContext.Provider>
   );

@@ -1,8 +1,11 @@
 import { Button, Flex, Text } from "@chakra-ui/react";
 import { useStateContext } from "../state/StateProvider";
+import { UnAuthenticatedBox } from "./UnAuthenticatedBox";
 
 export const ChatNavBar = () => {
   const { state, dispatch } = useStateContext();
+
+  if (!state.isAuthenticated) return <UnAuthenticatedBox viewName="" />;
   return (
     <Flex
       padding={"1rem"}

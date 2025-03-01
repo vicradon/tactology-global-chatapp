@@ -1,24 +1,18 @@
-import {
-  createContext,
-  useReducer,
-  Dispatch,
-  useContext,
-  useMemo,
-} from "react";
+import { createContext, useReducer, Dispatch, useContext, useMemo } from "react";
 
 // Define types first to avoid mismatch
-type User = {
-  id: string;
-  name: string;
-  status: string; // Making status required to match initialState
+export type User = {
+  id: number;
+  username: string;
+  isOnline?: boolean;
 };
 
-type Room = {
+export type Room = {
   id: string;
   name: string;
 };
 
-type Message = {
+export type Message = {
   id: string;
   sender: string;
   text: string;
@@ -39,7 +33,7 @@ type AppState = {
   activeRoom: Room;
   rooms: Room[];
   messages: Message[];
-  onlineUsers: User[];
+  users: User[];
   isConnected: boolean;
   currentUser: {
     id: string;
@@ -295,10 +289,10 @@ const initialState: AppState = {
       roomId: "room-1",
     },
   ],
-  onlineUsers: [
-    { id: "user-1", name: "Osi", status: "online" },
-    { id: "user-2", name: "Vicradon", status: "online" },
-    { id: "user-3", name: "Sophia", status: "away" },
+  users: [
+    { id: 1, username: "Osi", isOnline: false },
+    { id: 2, username: "Vicradon", isOnline: false },
+    { id: 3, username: "Sophia", isOnline: true },
   ],
   isConnected: true,
   currentUser: { id: "user-2", name: "Vicradon" },
@@ -314,10 +308,10 @@ type ACTIONTYPE =
   | { type: "ADD_ROOM"; payload: Room }
   | { type: "DELETE_ROOM"; payload: string }
   | { type: "UPDATE_ROOMS"; payload: Room[] }
-  | { type: "UPDATE_ONLINE_USERS"; payload: User[] }
+  | { type: "UPDATE_USERS"; payload: User[] }
   | { type: "SET_CONNECTION_STATUS"; payload: boolean }
   | { type: "CLEAR_ROOM_MESSAGES"; payload: string }
-  | { type: "SET_USER_STATUS"; payload: { userId: string; status: string } };
+  | { type: "SET_USER_STATUS"; payload: { userId: number; status: string } };
 
 type StateContextType = {
   state: AppState;
@@ -361,9 +355,7 @@ export const StateProvider = ({ children }: Props) => {
       case "DELETE_MESSAGE":
         return {
           ...state,
-          messages: state.messages.filter(
-            (message) => message.id !== action.payload
-          ),
+          messages: state.messages.filter((message) => message.id !== action.payload),
         };
 
       case "CHANGE_ROOM":
@@ -382,13 +374,10 @@ export const StateProvider = ({ children }: Props) => {
         return {
           ...state,
           rooms: state.rooms.filter((room) => room.id !== action.payload),
-          messages: state.messages.filter(
-            (message) => message.roomId !== action.payload
-          ),
+          messages: state.messages.filter((message) => message.roomId !== action.payload),
           activeRoom:
             state.activeRoom.id === action.payload
-              ? state.rooms.find((room) => room.id !== action.payload) ||
-                state.activeRoom
+              ? state.rooms.find((room) => room.id !== action.payload) || state.activeRoom
               : state.activeRoom,
         };
 
@@ -398,10 +387,10 @@ export const StateProvider = ({ children }: Props) => {
           rooms: action.payload,
         };
 
-      case "UPDATE_ONLINE_USERS":
+      case "UPDATE_USERS":
         return {
           ...state,
-          onlineUsers: action.payload,
+          users: action.payload,
         };
 
       case "SET_CONNECTION_STATUS":
@@ -413,18 +402,14 @@ export const StateProvider = ({ children }: Props) => {
       case "CLEAR_ROOM_MESSAGES":
         return {
           ...state,
-          messages: state.messages.filter(
-            (message) => message.roomId !== action.payload
-          ),
+          messages: state.messages.filter((message) => message.roomId !== action.payload),
         };
 
       case "SET_USER_STATUS":
         return {
           ...state,
-          onlineUsers: state.onlineUsers.map((user) =>
-            user.id === action.payload.userId
-              ? { ...user, status: action.payload.status }
-              : user
+          users: state.users.map((user) =>
+            user.id === action.payload.userId ? { ...user, status: action.payload.status } : user
           ),
         };
 
@@ -436,11 +421,7 @@ export const StateProvider = ({ children }: Props) => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const memoizedcontext = useMemo(() => ({ state, dispatch }), [state]);
 
-  return (
-    <StateContext.Provider value={memoizedcontext}>
-      {children}
-    </StateContext.Provider>
-  );
+  return <StateContext.Provider value={memoizedcontext}>{children}</StateContext.Provider>;
 };
 
 export const useStateContext = () => {

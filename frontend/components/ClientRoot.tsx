@@ -7,8 +7,9 @@ import { OnlineUsersAndRooms } from "@/components/ui/OnlineUsersAndRooms";
 import { TopNavBar } from "@/components/ui/TopNavBar";
 import { Grid, Box } from "@chakra-ui/react";
 import { Providers } from "./ui/provider";
-import { Profile, useStateContext } from "./state/StateProvider";
+import { Profile } from "./state/StateProvider";
 import { ServerToClientStateInit } from "./state/ServerToClientStateInit";
+import { SocketInit } from "./state/SocketInit";
 
 interface Props {
   isAuthenticated: boolean;
@@ -21,12 +22,8 @@ export const ClientRoot = ({ ...props }: Props) => {
   return (
     <Providers>
       <ServerToClientStateInit {...props} />
-      <Grid
-        height="100vh"
-        rowGap="1rem"
-        padding="1rem"
-        gridTemplateRows="60px 1fr"
-      >
+      <SocketInit />
+      <Grid height="100vh" rowGap="1rem" padding="1rem" gridTemplateRows="60px 1fr">
         <TopNavBar drawerChildren={<OnlineUsersAndRooms height="100%" />} />
         <Grid
           columnGap="1rem"

@@ -34,12 +34,8 @@ export class AuthController {
   };
 
   @Post('/register')
-  async register(
-    @Body() createUserDto: CreateUserDto,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const { accessToken, user } =
-      await this.authService.register(createUserDto);
+  async register(@Body() createUserDto: CreateUserDto, @Res({ passthrough: true }) response: Response) {
+    const { accessToken, user } = await this.authService.register(createUserDto);
 
     this.bakeCookie(response, accessToken);
 
@@ -55,14 +51,8 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('/login')
-  async signIn(
-    @Body() signInDto: User,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const { accessToken, user } = await this.authService.signIn(
-      signInDto.username,
-      signInDto.password,
-    );
+  async signIn(@Body() signInDto: User, @Res({ passthrough: true }) response: Response) {
+    const { accessToken, user } = await this.authService.signIn(signInDto.username, signInDto.password);
 
     this.bakeCookie(response, accessToken);
 
@@ -92,10 +82,7 @@ export class AuthController {
 
   @UseGuards(JWTAuthGuard)
   @Post('logout')
-  async handleLogout(
-    @Request() req,
-    @Res({ passthrough: true }) response: Response,
-  ) {
+  async handleLogout(@Request() req, @Res({ passthrough: true }) response: Response) {
     const username = req?.user?.username;
     if (!username) {
       throw new NotFoundException('User not found');

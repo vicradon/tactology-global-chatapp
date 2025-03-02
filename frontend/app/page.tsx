@@ -13,8 +13,9 @@ export default async function Home() {
     role: "",
   };
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
   try {
-    const res = await fetch("http://localhost:3500/auth/profile", {
+    const res = await fetch(`${API_BASE_URL}/auth/profile`, {
       headers: {
         Cookie: `accessToken=${token?.value}`,
       },

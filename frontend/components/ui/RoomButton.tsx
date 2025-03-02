@@ -28,6 +28,8 @@ export const RoomButton = ({ room }: { room?: Room }) => {
         type: "CHANGE_ROOM",
         payload: room,
       });
+
+      localStorage.setItem("activeRoom", JSON.stringify(room));
     }
   };
 

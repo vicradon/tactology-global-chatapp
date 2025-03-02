@@ -1,10 +1,26 @@
 import { Box, Flex, Grid, Heading, Text } from "@chakra-ui/react";
 import { RoomButton } from "./RoomButton";
-import { useStateContext } from "../state/StateProvider";
+import { Room, User, useStateContext } from "../state/StateProvider";
 import { UnAuthenticatedBox } from "./UnAuthenticatedBox";
+import { getSocket, useSocketListener } from "@/network/socket";
 
 export const OnlineUsersAndRooms = ({ ...props }) => {
-  const { state } = useStateContext();
+  const { state, dispatch } = useStateContext();
+
+  useSocketListener<{ data: User[] }>("usersWithStatus", ({ data }) => {
+    dispatch({
+      type: "UPDATE_USERS",
+      payload: data,
+    });
+  });
+
+  useSocketListener<{ data: Room[] }>("availableRooms", ({ data }) => {
+    dispatch({
+      type: "UPDATE_ROOMS",
+      payload: data,
+    });
+  });
+
   if (!state.isAuthenticated)
     return (
       <Flex
@@ -29,7 +45,7 @@ export const OnlineUsersAndRooms = ({ ...props }) => {
       {...props}
     >
       <Grid gridTemplateRows="50px 1fr" overflow="hidden">
-        <Heading>Users</Heading>
+        <Heading>Users Status</Heading>
         <Flex
           flexDirection="column"
           rowGap="0.5rem"
@@ -38,8 +54,16 @@ export const OnlineUsersAndRooms = ({ ...props }) => {
           paddingRight="0.5rem"
           paddingBottom={"1rem"}
         >
-          {Array.from({ length: 20 }).map((_, index) => (
-            <Text key={index}>User {index + 1}</Text>
+          {state.users.map((user, index) => (
+            <Flex key={index} columnGap={"0.5rem"} alignItems={"center"}>
+              <Box
+                bgColor={user.isOnline ? "green.500" : "red.500"}
+                borderRadius={"100%"}
+                width={"10px"}
+                height={"10px"}
+              />
+              <Text>{user.username}</Text>
+            </Flex>
           ))}
         </Flex>
       </Grid>
@@ -54,8 +78,8 @@ export const OnlineUsersAndRooms = ({ ...props }) => {
           paddingRight="0.5rem"
           paddingBottom={"2rem"}
         >
-          {Array.from({ length: 20 }).map((_, index) => (
-            <RoomButton key={index} />
+          {state.rooms.map((room, index) => (
+            <RoomButton room={room} key={index} />
           ))}
         </Flex>
       </Grid>

@@ -10,6 +10,7 @@ export type User = {
 export type Room = {
   id: string;
   name: string;
+  isMember?: boolean;
 };
 
 export type Message = {
@@ -29,8 +30,13 @@ export type Profile = {
 // Define the state type explicitly
 type AppState = {
   isAuthenticated: boolean;
+  isSocketConnected: boolean;
   profile: Profile;
-  activeRoom: Room;
+  roomMessages?: {
+    name: string;
+    messages: Message[];
+  };
+  activeRoom?: Room;
   rooms: Room[];
   messages: Message[];
   users: User[];
@@ -43,19 +49,15 @@ type AppState = {
 
 const initialState: AppState = {
   isAuthenticated: false,
+  isSocketConnected: false,
   profile: {
     username: "",
     role: "user",
     id: 0,
   },
-  activeRoom: {
-    name: "",
-    id: "",
-  },
-  rooms: [
-    { id: "room-1", name: "General" },
-    { id: "room-2", name: "Random" },
-  ],
+  activeRoom: undefined,
+  rooms: [],
+  roomMessages: undefined,
   messages: [
     {
       id: "38902487udj98983",
@@ -289,11 +291,7 @@ const initialState: AppState = {
       roomId: "room-1",
     },
   ],
-  users: [
-    { id: 1, username: "Osi", isOnline: false },
-    { id: 2, username: "Vicradon", isOnline: false },
-    { id: 3, username: "Sophia", isOnline: true },
-  ],
+  users: [],
   isConnected: true,
   currentUser: { id: "user-2", name: "Vicradon" },
 };
@@ -301,6 +299,8 @@ const initialState: AppState = {
 type ACTIONTYPE =
   | { type: "UPDATE_AUTH_STATE"; payload: boolean }
   | { type: "UPDATE_PROFILE"; payload: Profile }
+  | { type: "SET_IS_SOCKET_CONNECTED"; payload: boolean }
+  | { type: "RESET_STATE"; payload?: null }
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "UPDATE_MESSAGES"; payload: Message[] }
   | { type: "DELETE_MESSAGE"; payload: string }
@@ -340,6 +340,16 @@ export const StateProvider = ({ children }: Props) => {
           ...state,
           profile: action.payload,
         };
+      case "SET_IS_SOCKET_CONNECTED":
+        return {
+          ...state,
+          isSocketConnected: action.payload,
+        };
+      case "RESET_STATE":
+        return {
+          ...state,
+          ...initialState,
+        };
       case "ADD_MESSAGE":
         return {
           ...state,
@@ -376,7 +386,7 @@ export const StateProvider = ({ children }: Props) => {
           rooms: state.rooms.filter((room) => room.id !== action.payload),
           messages: state.messages.filter((message) => message.roomId !== action.payload),
           activeRoom:
-            state.activeRoom.id === action.payload
+            state.activeRoom?.id === action.payload
               ? state.rooms.find((room) => room.id !== action.payload) || state.activeRoom
               : state.activeRoom,
         };
@@ -390,7 +400,7 @@ export const StateProvider = ({ children }: Props) => {
       case "UPDATE_USERS":
         return {
           ...state,
-          users: action.payload,
+          users: action.payload.filter((user) => user.username !== "system"),
         };
 
       case "SET_CONNECTION_STATUS":

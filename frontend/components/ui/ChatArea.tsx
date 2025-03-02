@@ -8,6 +8,13 @@ export const ChatArea = ({ ...props }) => {
   const messages = state.messages;
 
   if (!state.isAuthenticated) return <UnAuthenticatedBox viewName="Chats" />;
+
+  if (state.isAuthenticated && !state.activeRoom)
+    return (
+      <Flex justifyContent={"center"} alignItems={"center"}>
+        <Text>Select a room to see messages</Text>
+      </Flex>
+    );
   return (
     <Flex flexDirection="column" h="100%" rowGap={"1rem"} p={4} {...props}>
       {messages.map((message) => {

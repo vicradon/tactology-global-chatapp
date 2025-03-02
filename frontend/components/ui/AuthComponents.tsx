@@ -1,13 +1,4 @@
-import {
-  Box,
-  Button,
-  Flex,
-  Grid,
-  HStack,
-  Input,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
+import { Box, Button, Flex, Grid, HStack, Input, Text, VStack } from "@chakra-ui/react";
 
 import {
   DialogRoot,
@@ -24,6 +15,7 @@ import { useState } from "react";
 import { useFetchMutation } from "@/network/fetch";
 import { toaster } from "@/components/ui/toaster";
 import { useStateContext } from "../state/StateProvider";
+import { disconnectSocket, getSocket } from "@/network/socket";
 
 interface AuthDialogProps {
   open: boolean;
@@ -38,11 +30,7 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     password: "",
   });
 
-  const {
-    mutate: triggerLogin,
-    loading: isLoginLoading,
-    error: loginError,
-  } = useFetchMutation("/auth/login");
+  const { mutate: triggerLogin, loading: isLoginLoading, error: loginError } = useFetchMutation("/auth/login");
 
   const {
     mutate: triggerRegister,
@@ -63,19 +51,25 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     const trigger = mode === "login" ? triggerLogin : triggerRegister;
 
     try {
-      await trigger(formState);
+      const response = await trigger(formState);
+      const user = response?.data?.user;
 
       dispatch({
         type: "UPDATE_AUTH_STATE",
         payload: true,
       });
 
+      dispatch({
+        type: "UPDATE_PROFILE",
+        payload: user,
+      });
+
+      const socket = getSocket();
+      socket?.connect();
+
       toaster.success({
         title: "Success",
-        description:
-          mode === "login"
-            ? "Logged in successfully!"
-            : "Registered successfully!",
+        description: mode === "login" ? "Logged in successfully!" : "Registered successfully!",
       });
 
       onClose();
@@ -116,20 +110,11 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
 
         <DialogFooter>
           <Grid width="100%" rowGap="0.5rem">
-            <Button
-              type="submit"
-              colorScheme="blue"
-              w="full"
-              loading={isLoginLoading || isRegisterLoading}
-            >
+            <Button type="submit" colorScheme="blue" w="full" loading={isLoginLoading || isRegisterLoading}>
               {mode === "login" ? "Login" : "Register"}
             </Button>
             <Flex justifyContent="space-between" alignItems="center">
-              <Text fontSize="sm">
-                {mode === "login"
-                  ? "Don't have an account?"
-                  : "Already have an account?"}
-              </Text>
+              <Text fontSize="sm">{mode === "login" ? "Don't have an account?" : "Already have an account?"}</Text>
               <Button
                 size="sm"
                 variant="plain"
@@ -151,11 +136,7 @@ export function SigninButton() {
 
   return (
     <>
-      <Button
-        variant={"outline"}
-        border={"2px solid"}
-        onClick={() => setDialogOpen(true)}
-      >
+      <Button variant={"outline"} border={"2px solid"} onClick={() => setDialogOpen(true)}>
         Sign In
       </Button>
       <AuthDialog open={isDialogOpen} onClose={() => setDialogOpen(false)} />
@@ -172,9 +153,10 @@ export const LogoutButton = () => {
       await mutate();
 
       dispatch({
-        type: "UPDATE_AUTH_STATE",
-        payload: false,
+        type: "RESET_STATE",
       });
+
+      disconnectSocket();
 
       toaster.success({
         title: "Logout successfully",
@@ -188,13 +170,7 @@ export const LogoutButton = () => {
   };
 
   return (
-    <Button
-      loading={loading}
-      border={"1px solid"}
-      borderRadius={"1rem"}
-      variant={"outline"}
-      onClick={handleLogout}
-    >
+    <Button loading={loading} border={"1px solid"} borderRadius={"1rem"} variant={"outline"} onClick={handleLogout}>
       Logout
     </Button>
   );

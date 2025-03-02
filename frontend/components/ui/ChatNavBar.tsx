@@ -6,24 +6,19 @@ export const ChatNavBar = () => {
   const { state, dispatch } = useStateContext();
 
   if (!state.isAuthenticated) return <UnAuthenticatedBox viewName="" />;
+
+  const currentUserIsMember = state.activeRoom?.isMember;
+
   return (
-    <Flex
-      padding={"1rem"}
-      justifyContent={"space-between"}
-      alignItems={"center"}
-    >
-      <Text>Chat Room - {state.activeRoom.name}</Text>
+    <Flex padding={"1rem"} justifyContent={"space-between"} alignItems={"center"}>
+      <Text>Chat Room - {state.activeRoom?.name}</Text>
       <Button
-        onClick={() =>
-          dispatch({
-            type: "CHANGE_ROOM",
-            payload: { id: "something", name: "The Fuckers" },
-          })
-        }
+        display={state.activeRoom ? "block" : "none"}
+        onClick={() => {}}
         variant={"solid"}
-        bgColor={"red.400"}
+        bgColor={currentUserIsMember ? "red.400" : "green.400"}
       >
-        Leave Room
+        {currentUserIsMember ? "Leave Room" : "Join Room"}
       </Button>
     </Flex>
   );

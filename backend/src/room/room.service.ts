@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
@@ -26,10 +21,7 @@ export class RoomService {
     private serializationContext: SerializationContextService,
   ) {}
 
-  async createRoom(
-    createRoomDto: CreateRoomDto,
-    userId: number,
-  ): Promise<Room> {
+  async createRoom(createRoomDto: CreateRoomDto, userId: number): Promise<Room> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
 
     if (!user) {
@@ -105,14 +97,10 @@ export class RoomService {
     }
 
     if (room.created_by_id === userId) {
-      throw new ForbiddenException(
-        'Room creator cannot leave the room. Transfer ownership first or delete the room.',
-      );
+      throw new ForbiddenException('Room creator cannot leave the room. Transfer ownership first or delete the room.');
     }
 
-    const memberIndex = room.members.findIndex(
-      (member) => member.id === userId,
-    );
+    const memberIndex = room.members.findIndex((member) => member.id === userId);
 
     if (memberIndex === -1) {
       throw new BadRequestException('User is not a member of this room');
@@ -136,20 +124,41 @@ export class RoomService {
     await this.roomRepository.save(room);
   }
 
-  async getAllRooms(withMembers = false): Promise<Room[]> {
-    const relations = ['created_by'];
+  // TODO: Optimize later
+  async getAllRooms(userId?: number, withMembers = false): Promise<Room[]> {
+    if (userId) {
+      const relations = ['created_by', 'members'];
+      const rooms = await this.roomRepository.find({ relations });
+      const roomsWithMembers = rooms.map((room) => ({
+        ...room,
+        isMember: room.members.some((member) => member.id === userId),
+      }));
 
-    if (withMembers) {
-      relations.push('members');
+      if (!withMembers) {
+        const roomsWithoutMembers = roomsWithMembers.map((room) => {
+          const { members, ...rest } = room;
+          return rest;
+        });
+
+        return this.serializationContext.needsSerialization()
+          ? (instanceToPlain(roomsWithoutMembers) as Room[])
+          : rooms;
+      }
+
+      return this.serializationContext.needsSerialization() ? (instanceToPlain(roomsWithMembers) as Room[]) : rooms;
+    } else {
+      const relations = ['created_by'];
+
+      if (withMembers) {
+        relations.push('members');
+      }
+
+      const rooms = await this.roomRepository.find({
+        relations,
+      });
+
+      return this.serializationContext.needsSerialization() ? (instanceToPlain(rooms) as Room[]) : rooms;
     }
-
-    const rooms = await this.roomRepository.find({
-      relations,
-    });
-
-    return this.serializationContext.needsSerialization()
-      ? (instanceToPlain(rooms) as Room[])
-      : rooms;
   }
 
   async checkIfUserInRoom(roomId: string, userId: number): Promise<boolean> {

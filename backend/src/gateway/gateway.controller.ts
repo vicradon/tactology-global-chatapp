@@ -1,9 +1,4 @@
-import {
-  ClassSerializerInterceptor,
-  OnModuleInit,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
+import { ClassSerializerInterceptor, OnModuleInit, UseGuards, UseInterceptors } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConnectedSocket,
@@ -36,7 +31,6 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     private gatewayService: GatewayService,
     private roomService: RoomService,
     private eventEmitter: EventEmitter2,
-    private serializationContext: SerializationContextService,
   ) {}
 
   @WebSocketServer()
@@ -55,7 +49,8 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
 
         this.gatewayService.addOnlineUser(userId, username, socket.id);
         await this.gatewayService.joinUserToTheirRooms(userId, socket);
-        this.broadcastOnlineUsers();
+        await this.broadcastUsersWithStatus({ fetchAll: true });
+        await this.broadcastAvailableRooms(socket);
       } catch (error) {
         console.error('Error in connection handler:', error);
         socket.emit('roomMessageHistory', []);
@@ -63,16 +58,20 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     });
   }
 
-  private broadcastOnlineUsers() {
-    const onlineUsers = this.gatewayService.getOnlineUsers();
-    this.server.emit('onlineUsersUpdate', onlineUsers);
+  private async broadcastUsersWithStatus({ fetchAll }: { fetchAll: boolean } = { fetchAll: false }) {
+    const usersWithStatus = await this.gatewayService.getUsersWithTheirStatus({
+      fetchAll,
+    });
+    this.server.emit('usersWithStatus', {
+      data: usersWithStatus,
+    });
   }
 
-  handleDisconnect(socket: Socket) {
+  async handleDisconnect(socket: Socket) {
     try {
       if (socket.data?.user?.sub) {
         this.gatewayService.removeOnlineUser(socket.data.user.sub);
-        this.broadcastOnlineUsers();
+        await this.broadcastUsersWithStatus({ fetchAll: true });
       }
     } catch (error) {
       console.error('Error handling disconnect:', error);
@@ -83,28 +82,25 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.handleDisconnect(socket);
   }
 
-  @SubscribeMessage('availableRooms')
-  @UseInterceptors(ClassSerializerInterceptor)
-  async onGetRooms(@ConnectedSocket() client: Socket) {
-    const availableRooms = await this.serializationContext.runWithSerialization(
-      () => this.roomService.getAllRooms(),
-    );
+  async broadcastAvailableRooms(client: Socket) {
+    const userId = client.data?.user?.sub;
+    const availableRooms = await this.gatewayService.getAvailableRooms(userId);
     client.emit('availableRooms', {
       data: availableRooms,
     });
   }
 
+  @SubscribeMessage('availableRooms')
+  @UseInterceptors(ClassSerializerInterceptor)
+  async onGetRooms(@ConnectedSocket() client: Socket) {
+    await this.broadcastAvailableRooms(client);
+  }
+
   @SubscribeMessage('roomMessageHistory')
   @UseInterceptors(ClassSerializerInterceptor)
-  async onRoomMessageHistory(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomId: string },
-  ) {
+  async onRoomMessageHistory(@ConnectedSocket() client: Socket, @MessageBody() data: { roomId: string }) {
     try {
-      const messages = await this.gatewayService.getMessagesByRoom(
-        data.roomId,
-        50,
-      );
+      const messages = await this.gatewayService.getMessagesByRoom(data.roomId, 50);
       client.emit(
         'roomMessageHistory',
         messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
@@ -119,10 +115,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('messageRoom')
-  async onNewMessage(
-    @MessageBody() data: { roomId: string; text: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onNewMessage(@MessageBody() data: { roomId: string; text: string }, @ConnectedSocket() client: Socket) {
     const userId = client.data.user.sub;
     const roomId = data.roomId;
     const messageText = data.text;
@@ -147,10 +140,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       return;
     }
 
-    const userInRoom = await this.gatewayService.verifyUserInRoom(
-      roomId,
-      userId,
-    );
+    const userInRoom = await this.gatewayService.verifyUserInRoom(roomId, userId);
 
     if (!userInRoom) {
       client.emit('notification', {
@@ -180,20 +170,14 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('joinRoom')
-  async onJoinRoom(
-    @MessageBody() data: { roomId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onJoinRoom(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: Socket) {
     const userId = client.data?.user?.sub;
     this.gatewayService.updateUserActivity(userId);
 
     try {
       const room = await this.roomService.getRoomById(data.roomId);
 
-      const isInRoom = await this.gatewayService.verifyUserInRoom(
-        room.id,
-        userId,
-      );
+      const isInRoom = await this.gatewayService.verifyUserInRoom(room.id, userId);
 
       if (isInRoom) {
         client.emit('notification', {
@@ -239,10 +223,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('leaveRoom')
-  async onLeaveRoom(
-    @MessageBody() data: { roomId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onLeaveRoom(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: Socket) {
     const userId = client.data.user.sub;
 
     this.gatewayService.updateUserActivity(userId);
@@ -250,10 +231,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     try {
       const room = await this.roomService.getRoomById(data.roomId);
 
-      const leaveCheck = await this.gatewayService.canLeaveRoom(
-        room.id,
-        userId,
-      );
+      const leaveCheck = await this.gatewayService.canLeaveRoom(room.id, userId);
 
       if (!leaveCheck.canLeave) {
         client.emit('notification', {
@@ -293,37 +271,36 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('switchToRoom')
-  async onSwitchToRoom(
-    @MessageBody() data: { roomId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onSwitchToRoom(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: Socket) {
     const userId = client.data?.user?.sub;
-    if (!userId) return;
-
-    this.gatewayService.updateUserActivity(userId);
+    if (!data?.roomId) return;
 
     const roomId = data.roomId;
-    const userInRoom = await this.gatewayService.verifyUserInRoom(
-      roomId,
-      userId,
-    );
+    const userInRoom = await this.gatewayService.verifyUserInRoom(roomId, userId);
 
     if (userInRoom) {
       client.join(roomId);
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
-      client.emit('roomMessageHistory', messages);
-      client.emit('roomMembershipStatus', {
-        roomId,
-        isMember: true,
-        action: 'NONE',
+      client.emit('roomMessageHistory', {
+        data: {
+          roomId,
+          messages,
+        },
       });
     } else {
-      client.emit('roomMessageHistory', []);
+      client.emit('roomMessageHistory', {
+        data: {
+          roomId,
+          messages: [],
+        },
+      });
       client.emit('notification', {
-        text: 'You must join the room to see messages or send messages',
-        sender: 'system',
-        messageType: MessageType.SYSTEM,
-        timestamp: Date.now(),
+        data: {
+          text: 'You must join the room to see messages or send messages',
+          sender: 'system',
+          messageType: MessageType.SYSTEM,
+          timestamp: Date.now(),
+        },
       });
       client.emit('roomMembershipStatus', {
         roomId,
@@ -334,18 +311,12 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('checkRoomMembership')
-  async onCheckRoomMembership(
-    @MessageBody() data: { roomId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onCheckRoomMembership(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: Socket) {
     const userId = client.data?.user?.sub;
     if (!userId) return;
 
     try {
-      const isMember = await this.gatewayService.verifyUserInRoom(
-        data.roomId,
-        userId,
-      );
+      const isMember = await this.gatewayService.verifyUserInRoom(data.roomId, userId);
       client.emit('roomMembershipStatus', {
         roomId: data.roomId,
         isMember,
@@ -356,10 +327,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('roomCreated')
-  async onRoomCreated(
-    @MessageBody() data: { room: Room },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async onRoomCreated(@MessageBody() data: { room: Room }, @ConnectedSocket() client: Socket) {
     const userId = client.data?.user?.sub;
     if (!userId) return;
 
@@ -369,9 +337,11 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('getOnlineUsers')
-  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
-    const onlineUsers = this.gatewayService.getOnlineUsers();
-    client.emit('onlineUsersUpdate', onlineUsers);
+  async handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
+    const onlineUsers = await this.gatewayService.getUsersWithTheirStatus({
+      fetchAll: true,
+    });
+    client.emit('usersWithStatus', onlineUsers);
   }
 
   @SubscribeMessage('heartbeat')

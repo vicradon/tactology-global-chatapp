@@ -12,6 +12,7 @@ import { Message } from 'src/message/entities/message.entity';
 import { CreateMessageDto } from 'src/message/dto/create-message.dto';
 import { User } from 'src/users/entities/user.entity';
 import { Room } from 'src/room/entities/room.entity';
+import { SerializationContextService } from 'src/context/serialization.context';
 
 type NewMessageDto = {
   username: string;
@@ -38,6 +39,7 @@ export class GatewayService {
     private jwtService: JwtService,
     private roomService: RoomService,
     private eventEmitter: EventEmitter2,
+    private serializationContext: SerializationContextService,
   ) {}
 
   async getAllMessages(): Promise<Message[]> {
@@ -67,10 +69,7 @@ export class GatewayService {
     };
   }
 
-  async getMessagesByRoom(
-    roomId: string,
-    limit: number = 50,
-  ): Promise<Message[]> {
+  async getMessagesByRoom(roomId: string, limit: number = 50): Promise<Message[]> {
     return this.messageRepository.find({
       where: {
         room: {
@@ -132,15 +131,58 @@ export class GatewayService {
     return Array.from(this.onlineUsers.values());
   }
 
+  async getUsersWithTheirStatus(
+    { fetchAll }: { fetchAll: boolean } = { fetchAll: false },
+  ): Promise<{ id: number; username: string; isOnline: boolean }[]> {
+    if (!fetchAll) {
+      return Array.from(this.onlineUsers.entries()).map(([id, user]) => ({
+        id,
+        username: user.username,
+        isOnline: true,
+      }));
+    }
+
+    const topUsers = await this.userRepository.find({
+      take: 30,
+      select: ['id', 'username'],
+    });
+
+    const onlineUserIds = new Set(this.onlineUsers.keys());
+
+    const allUsers = new Map<number, { id: number; username: string; isOnline: boolean }>();
+
+    for (const user of topUsers) {
+      allUsers.set(user.id, {
+        id: user.id,
+        username: user.username,
+        isOnline: onlineUserIds.has(user.id),
+      });
+    }
+
+    for (const [id, user] of this.onlineUsers.entries()) {
+      if (!allUsers.has(id)) {
+        allUsers.set(id, {
+          id,
+          username: user.username,
+          isOnline: true,
+        });
+      }
+    }
+
+    return Array.from(allUsers.values());
+  }
+
+  async getAvailableRooms(userId?: number) {
+    return await this.serializationContext.runWithSerialization(() => this.roomService.getAllRooms(userId));
+  }
+
   createAuthMiddleware() {
     return async (socket: Socket, next) => {
       try {
         const cookieString = socket.handshake.headers.cookie || '';
         const cookies = this.parseCookies(cookieString);
 
-        const signedCookie = cookies?.['accessToken']
-          ? decodeURIComponent(cookies?.['accessToken'])
-          : undefined;
+        const signedCookie = cookies?.['accessToken'] ? decodeURIComponent(cookies?.['accessToken']) : undefined;
 
         let token;
 
@@ -148,19 +190,11 @@ export class GatewayService {
           const authHeader = socket.handshake.headers.authorization;
 
           if (!authHeader) {
-            return next(
-              new Error(
-                'Authentication error: Authorization header not provided',
-              ),
-            );
+            return next(new Error('Authentication error: Authorization header not provided'));
           }
 
           if (!authHeader.startsWith('Bearer ')) {
-            return next(
-              new Error(
-                "Authentication error: Authorization header's value should start with Bearer",
-              ),
-            );
+            return next(new Error("Authentication error: Authorization header's value should start with Bearer"));
           }
 
           token = authHeader.substring(7);
@@ -185,9 +219,7 @@ export class GatewayService {
           socket.data.user = payload;
           next();
         } catch (jwtError) {
-          return next(
-            new Error('Authentication error: Invalid or expired token'),
-          );
+          return next(new Error('Authentication error: Invalid or expired token'));
         }
       } catch (err) {
         console.error('Auth error:', err);
@@ -213,10 +245,7 @@ export class GatewayService {
     return this.roomService.checkIfUserInRoom(roomId, userId);
   }
 
-  async canLeaveRoom(
-    roomId: string,
-    userId: number,
-  ): Promise<{ canLeave: boolean; text?: string; type?: string }> {
+  async canLeaveRoom(roomId: string, userId: number): Promise<{ canLeave: boolean; text?: string; type?: string }> {
     const room = await this.roomService.getRoomById(roomId);
 
     if (room.meta?.isGeneral) {

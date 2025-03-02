@@ -1,51 +1,33 @@
 import { useEffect } from "react";
 import { Profile, useStateContext } from "./StateProvider";
-import { getSocket, initializeSocket, useSocketConnection } from "@/network/socket";
+import { getSocket, initializeSocket, useSocketConnection, useSocketListener } from "@/network/socket";
+import { toaster } from "../ui/toaster";
 
-interface Props {
-  isAuthenticated: boolean;
-  profile: Profile;
-}
-
-export const ClientStateInit = ({ isAuthenticated, profile }: Props) => {
-  const { dispatch } = useStateContext();
+export const SocketInit = () => {
+  const { dispatch, state } = useStateContext();
+  const isAuthenticated = state.isAuthenticated;
 
   useEffect(() => {
     if (isAuthenticated) {
       const socket = initializeSocket();
 
       if (socket.connected) {
-        socket.emit("getOnlineUsersUpdate");
-        socket.emit("availableRooms");
-        socket.emit("userConnected", { username: profile.username });
+        dispatch({
+          type: "SET_IS_SOCKET_CONNECTED",
+          payload: true,
+        });
       }
     }
-  }, [isAuthenticated, profile]);
+  }, [isAuthenticated]);
 
-  const { connected } = useSocketConnection();
-
-  useEffect(() => {
-    if (connected && isAuthenticated) {
-      const socket = getSocket();
-      if (socket) {
-        socket.emit("getOnlineUsersUpdate");
-        socket.emit("availableRooms");
-        socket.emit("userConnected", { username: profile.username });
-      }
+  useSocketListener("notification", (data) => {
+    if (data?.messageType === "system") {
+      toaster.create({
+        type: "info",
+        title: data?.text,
+      });
     }
-  }, [connected, isAuthenticated]);
-
-  useEffect(() => {
-    dispatch({
-      type: "UPDATE_AUTH_STATE",
-      payload: isAuthenticated,
-    });
-
-    dispatch({
-      type: "UPDATE_PROFILE",
-      payload: profile,
-    });
-  }, [isAuthenticated, profile, dispatch]);
+  });
 
   return null;
 };

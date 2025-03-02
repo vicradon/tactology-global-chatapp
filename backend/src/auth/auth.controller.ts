@@ -38,7 +38,8 @@ export class AuthController {
     @Body() createUserDto: CreateUserDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const { accessToken } = await this.authService.register(createUserDto);
+    const { accessToken, user } =
+      await this.authService.register(createUserDto);
 
     this.bakeCookie(response, accessToken);
 
@@ -47,6 +48,7 @@ export class AuthController {
       message: 'Registration successful',
       data: {
         accessToken: `Bearer ${accessToken}`,
+        user,
       },
     };
   }
@@ -57,7 +59,7 @@ export class AuthController {
     @Body() signInDto: User,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const { accessToken } = await this.authService.signIn(
+    const { accessToken, user } = await this.authService.signIn(
       signInDto.username,
       signInDto.password,
     );
@@ -69,6 +71,7 @@ export class AuthController {
       message: 'login successful',
       data: {
         accessToken: `Bearer ${accessToken}`,
+        user,
       },
     };
   }

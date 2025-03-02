@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
+import { User } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
@@ -16,7 +17,9 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(createUserDto: CreateUserDto) {
+  async register(
+    createUserDto: CreateUserDto,
+  ): Promise<{ accessToken: string; user: User }> {
     const existingUser = await this.usersService.findOne(
       createUserDto.username,
     );
@@ -32,15 +35,18 @@ export class AuthService {
     const user = await this.usersService.create(newUser);
     const payload = { sub: user.id, username: user.username };
 
+    const accessToken = await this.jwtService.signAsync(payload);
+
     return {
-      accessToken: await this.jwtService.signAsync(payload),
+      accessToken,
+      user,
     };
   }
 
   async signIn(
     username: string,
     pass: string,
-  ): Promise<{ accessToken: string }> {
+  ): Promise<{ accessToken: string; user: User }> {
     const user = await this.usersService.findOne(username);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -52,7 +58,12 @@ export class AuthService {
       );
     }
 
-    return this.validateUserAndGenerateToken(user, pass);
+    const { accessToken } = await this.validateUserAndGenerateToken(user, pass);
+
+    return {
+      accessToken,
+      user,
+    };
   }
 
   async systemSignIn(

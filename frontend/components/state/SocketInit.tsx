@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { Message, Profile, Room, useStateContext } from "./StateProvider";
-import { getSocket, initializeSocket, useSocketConnection, useSocketListener } from "@/network/socket";
+import { Message, useStateContext } from "./StateProvider";
+import { initializeSocket, useSocketListener } from "@/network/socket";
 import { toaster } from "../ui/toaster";
 
 export const SocketInit = () => {
@@ -18,7 +18,7 @@ export const SocketInit = () => {
         });
       }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, dispatch]);
 
   useSocketListener("notification", (data) => {
     if (data?.messageType === "system") {

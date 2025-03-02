@@ -1,15 +1,13 @@
-import { Box, Button, Flex, Grid, HStack, Input, Text, VStack } from "@chakra-ui/react";
+import { Button, Flex, Grid, Input, Text, VStack } from "@chakra-ui/react";
 
 import {
   DialogRoot,
-  DialogTrigger,
   DialogContent,
   DialogCloseTrigger,
   DialogHeader,
   DialogBody,
   DialogFooter,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { useState } from "react";
 import { useFetchMutation } from "@/network/fetch";
@@ -37,6 +35,22 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     loading: isRegisterLoading,
     error: registerError,
   } = useFetchMutation("/auth/register");
+
+  if (loginError) {
+    toaster.create({
+      type: "error",
+      title: "Login error",
+      description: loginError.message,
+    });
+  }
+
+  if (registerError) {
+    toaster.create({
+      type: "error",
+      title: "Register error",
+      description: registerError.message,
+    });
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -147,6 +161,13 @@ export function SigninButton() {
 export const LogoutButton = () => {
   const { mutate, loading, error } = useFetchMutation("/auth/logout");
   const { dispatch } = useStateContext();
+
+  if (error) {
+    toaster.create({
+      type: "error",
+      title: error.message,
+    });
+  }
 
   const handleLogout = async () => {
     try {

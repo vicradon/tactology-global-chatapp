@@ -2,7 +2,7 @@ import { Box, Flex, Grid, Heading, Text } from "@chakra-ui/react";
 import { RoomButton } from "./RoomButton";
 import { Room, User, useStateContext } from "../state/StateProvider";
 import { UnAuthenticatedBox } from "./UnAuthenticatedBox";
-import { getSocket, useSocketListener } from "@/network/socket";
+import { useSocketListener } from "@/network/socket";
 
 export const OnlineUsersAndRooms = ({ ...props }) => {
   const { state, dispatch } = useStateContext();

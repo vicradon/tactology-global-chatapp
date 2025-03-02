@@ -2,12 +2,14 @@ import { Flex, Text } from "@chakra-ui/react";
 import { ChatBubble } from "./ChatBubble";
 import { useStateContext } from "../state/StateProvider";
 import { UnAuthenticatedBox } from "./UnAuthenticatedBox";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 export const ChatArea = ({ ...props }) => {
   const { state } = useStateContext();
   const activeRoomId = state.activeRoom?.id;
-  const roomMessages = activeRoomId ? state.roomMessages?.[activeRoomId] : [];
+  const roomMessages = useMemo(() => {
+    return activeRoomId ? state.roomMessages?.[activeRoomId] : [];
+  }, [state.roomMessages, activeRoomId]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

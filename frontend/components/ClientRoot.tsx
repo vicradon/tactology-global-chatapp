@@ -1,5 +1,4 @@
 "use client";
-import React, { useEffect } from "react";
 import { ChatArea } from "@/components/ui/ChatArea";
 import { ChatForm } from "@/components/ui/ChatForm";
 import { ChatNavBar } from "@/components/ui/ChatNavBar";
@@ -12,8 +11,8 @@ import { ServerToClientStateInit } from "./state/ServerToClientStateInit";
 import { SocketInit } from "./state/SocketInit";
 
 interface Props {
-  isAuthenticated: boolean;
-  profile: Profile;
+  isAuthenticated: boolean | undefined;
+  profile: Profile | undefined;
 }
 
 export const ClientRoot = ({ ...props }: Props) => {

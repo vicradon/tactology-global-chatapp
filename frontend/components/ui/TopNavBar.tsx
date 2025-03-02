@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Text, useBreakpointValue } from "@chakra-ui/react";
+import { Flex, Text, useBreakpointValue } from "@chakra-ui/react";
 import { ColorModeButton } from "./color-mode";
 import { LayoutDrawer } from "./LayoutDrawer";
 import React, { useState } from "react";
@@ -24,11 +24,7 @@ export const TopNavBar = ({ drawerChildren }: Props) => {
       borderRadius={"1rem"}
     >
       <Flex columnGap={"1rem"} alignItems={"center"}>
-        <LayoutDrawer
-          isMobile={isMobile || false}
-          open={open}
-          setOpen={setOpen}
-        >
+        <LayoutDrawer isMobile={isMobile || false} open={open} setOpen={setOpen}>
           {drawerChildren}
         </LayoutDrawer>
         {state.isAuthenticated ? (

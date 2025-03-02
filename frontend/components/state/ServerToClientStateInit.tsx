@@ -1,26 +1,52 @@
 import { useEffect } from "react";
 import { Profile, Room, useStateContext } from "./StateProvider";
 import { getSocket, useSocketConnection } from "@/network/socket";
+import { useFetchMutation } from "@/network/fetch";
 
 interface Props {
-  isAuthenticated: boolean;
-  profile: Profile;
+  isAuthenticated: boolean | undefined;
+  profile: Profile | undefined;
 }
 
 export const ServerToClientStateInit = ({ isAuthenticated, profile }: Props) => {
   const { dispatch } = useStateContext();
   const { connected } = useSocketConnection();
 
-  useEffect(() => {
-    dispatch({
-      type: "UPDATE_AUTH_STATE",
-      payload: isAuthenticated,
-    });
+  const { mutate: triggerProfileFetch } = useFetchMutation("/auth/profile", {
+    method: "GET",
+  });
 
-    dispatch({
-      type: "UPDATE_PROFILE",
-      payload: profile,
-    });
+  useEffect(() => {
+    // client side auth check fallback - nextjs server, for some reason, isn't getting the cookies on environments other than local
+    async function fetchProfile() {
+      try {
+        const profile = await triggerProfileFetch();
+        dispatch({
+          type: "UPDATE_AUTH_STATE",
+          payload: true,
+        });
+        dispatch({
+          type: "UPDATE_PROFILE",
+          payload: profile,
+        });
+      } catch (error) {}
+    }
+
+    if (isAuthenticated === undefined && profile === undefined) {
+      fetchProfile();
+    } else {
+      if (isAuthenticated !== undefined)
+        dispatch({
+          type: "UPDATE_AUTH_STATE",
+          payload: isAuthenticated,
+        });
+
+      if (profile !== undefined)
+        dispatch({
+          type: "UPDATE_PROFILE",
+          payload: profile,
+        });
+    }
   }, [isAuthenticated, profile, dispatch]);
 
   useEffect(() => {

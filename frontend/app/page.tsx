@@ -6,16 +6,10 @@ export default async function Home() {
   const cookieStore = await cookies();
   const token = cookieStore.get("accessToken");
 
-  let isAuthenticated = false;
-  let profile: Profile = {
-    username: "",
-    id: 0,
-    role: "",
-  };
+  let isAuthenticated: boolean | undefined = undefined;
+  let profile: Profile | undefined = undefined;
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  console.log(API_BASE_URL, token, cookieStore.getAll);
 
   try {
     const res = await fetch(`${API_BASE_URL}/auth/profile`, {
@@ -23,8 +17,10 @@ export default async function Home() {
         Cookie: `accessToken=${token?.value}`,
       },
     });
-    isAuthenticated = res.ok;
-    profile = await res.json();
+    if (res.ok) {
+      isAuthenticated = res.ok;
+      profile = await res.json();
+    }
   } catch (error) {
     console.error(error);
   }

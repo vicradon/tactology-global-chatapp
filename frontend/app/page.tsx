@@ -14,6 +14,9 @@ export default async function Home() {
   };
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  console.log(API_BASE_URL);
+
   try {
     const res = await fetch(`${API_BASE_URL}/auth/profile`, {
       headers: {
@@ -22,7 +25,9 @@ export default async function Home() {
     });
     isAuthenticated = res.ok;
     profile = await res.json();
-  } catch (error) {}
+  } catch (error) {
+    console.error(error);
+  }
 
   return (
     <div>

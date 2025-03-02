@@ -15,7 +15,7 @@ export default async function Home() {
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-  console.log(API_BASE_URL, token, cookieStore);
+  console.log(API_BASE_URL, token, cookieStore.getAll);
 
   try {
     const res = await fetch(`${API_BASE_URL}/auth/profile`, {

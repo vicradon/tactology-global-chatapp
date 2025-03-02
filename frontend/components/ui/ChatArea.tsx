@@ -2,11 +2,17 @@ import { Flex, Text } from "@chakra-ui/react";
 import { ChatBubble } from "./ChatBubble";
 import { useStateContext } from "../state/StateProvider";
 import { UnAuthenticatedBox } from "./UnAuthenticatedBox";
+import { useEffect, useRef } from "react";
 
 export const ChatArea = ({ ...props }) => {
   const { state } = useStateContext();
   const activeRoomId = state.activeRoom?.id;
   const roomMessages = activeRoomId ? state.roomMessages?.[activeRoomId] : [];
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [roomMessages]);
 
   if (!state.isAuthenticated) return <UnAuthenticatedBox viewName="Chats" />;
 
@@ -18,10 +24,11 @@ export const ChatArea = ({ ...props }) => {
     );
 
   return (
-    <Flex flexDirection="column" h="100%" rowGap={"1rem"} p={4} {...props}>
-      {roomMessages?.map((message) => {
-        return <ChatBubble key={message.id} message={message} />;
-      })}
+    <Flex flexDirection="column" h="100%" overflowY="auto" rowGap={"1rem"} p={4} {...props}>
+      {roomMessages?.map((message) => (
+        <ChatBubble key={message.id} message={message} />
+      ))}
+      <div ref={messagesEndRef} />
     </Flex>
   );
 };

@@ -63,6 +63,7 @@ export class GatewayService {
     return {
       id: savedMessage.id,
       text: savedMessage.text,
+      room: savedMessage.room,
       messageType: savedMessage.messageType,
       timestamp: savedMessage.timestamp,
       sender,

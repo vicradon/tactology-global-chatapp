@@ -46,7 +46,7 @@ export class RoomService {
     return this.roomRepository.save(room);
   }
 
-  async joinRoom(roomId: string, userId: number): Promise<Room> {
+  async joinRoom(roomId: string, userId: number): Promise<{ joinMessage: Message }> {
     const room = await this.roomRepository.findOne({
       where: { id: roomId },
       relations: ['members'],
@@ -83,10 +83,14 @@ export class RoomService {
 
     await this.messageRepository.save(joinMessage);
 
-    return this.roomRepository.save(room);
+    await this.roomRepository.save(room);
+
+    return {
+      joinMessage,
+    };
   }
 
-  async leaveRoom(roomId: string, userId: number): Promise<void> {
+  async leaveRoom(roomId: string, userId: number): Promise<{ leaveMessage: Message }> {
     const room = await this.roomRepository.findOne({
       where: { id: roomId },
       relations: ['members', 'created_by'],
@@ -122,6 +126,8 @@ export class RoomService {
 
     room.members.splice(memberIndex, 1);
     await this.roomRepository.save(room);
+
+    return { leaveMessage };
   }
 
   // TODO: Optimize later

@@ -50,7 +50,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         this.gatewayService.addOnlineUser(userId, username, socket.id);
         await this.gatewayService.joinUserToTheirRooms(userId, socket);
         await this.broadcastUsersWithStatus({ fetchAll: true });
-        await this.broadcastAvailableRooms(socket);
+        await this.sendRoomsToClient(socket);
       } catch (error) {
         console.error('Error in connection handler:', error);
         socket.emit('roomMessageHistory', []);
@@ -82,7 +82,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
     this.handleDisconnect(socket);
   }
 
-  async broadcastAvailableRooms(client: Socket) {
+  async sendRoomsToClient(client: Socket) {
     const userId = client.data?.user?.sub;
     const availableRooms = await this.gatewayService.getAvailableRooms(userId);
     client.emit('availableRooms', {
@@ -93,7 +93,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   @SubscribeMessage('availableRooms')
   @UseInterceptors(ClassSerializerInterceptor)
   async onGetRooms(@ConnectedSocket() client: Socket) {
-    await this.broadcastAvailableRooms(client);
+    await this.sendRoomsToClient(client);
   }
 
   @SubscribeMessage('roomMessageHistory')
@@ -101,10 +101,10 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   async onRoomMessageHistory(@ConnectedSocket() client: Socket, @MessageBody() data: { roomId: string }) {
     try {
       const messages = await this.gatewayService.getMessagesByRoom(data.roomId, 50);
-      client.emit(
-        'roomMessageHistory',
-        messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
-      );
+      client.emit('roomMessageHistory', {
+        roomId: data.roomId,
+        messages: messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
+      });
     } catch (error) {
       client.emit('notification', {
         sender: 'system',
@@ -162,11 +162,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
 
     const savedMessage = await this.gatewayService.saveMessage(messageData);
 
-    this.server.to(roomId).emit('newRoomMessage', {
-      sender: savedMessage.sender.username,
-      timestamp: savedMessage.timestamp,
-      text: savedMessage.text,
-    });
+    this.server.to(roomId).emit('newRoomMessage', savedMessage);
   }
 
   @SubscribeMessage('joinRoom')
@@ -189,33 +185,34 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         return;
       }
 
-      await this.roomService.joinRoom(room.id, userId);
+      const { joinMessage } = await this.roomService.joinRoom(room.id, userId);
 
       client.join(room.id);
       client.emit('notification', {
         text: `You joined ${room.name}`,
-        sender: 'system',
+        sender: {
+          username: 'system',
+        },
         messageType: MessageType.SYSTEM,
         timestamp: Date.now(),
       });
 
       const messages = await this.gatewayService.getMessagesByRoom(room.id, 50);
-      client.emit(
-        'roomMessageHistory',
-        messages.map((msg) => ({ ...msg, sender: msg.sender.username })),
-      );
-
-      client.to(room.id).emit('newRoomMessage', {
-        text: `${client.data.user.username} joined`,
-        sender: 'system',
-        messageType: MessageType.SYSTEM,
-        timestamp: Date.now(),
+      client.emit('roomMessageHistory', {
+        roomId: room.id,
+        messages,
       });
+
+      client.to(room.id).emit('newRoomMessage', joinMessage);
+
+      this.sendRoomsToClient(client);
     } catch (error) {
       console.error(`Error joining room: ${error.message}`);
       client.emit('notification', {
         text: `Error joining room: ${error.message}`,
-        sender: 'system',
+        sender: {
+          username: 'system',
+        },
         messageType: MessageType.SYSTEM,
         timestamp: Date.now(),
       });
@@ -243,7 +240,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         return;
       }
 
-      await this.roomService.leaveRoom(room.id, userId);
+      const { leaveMessage } = await this.roomService.leaveRoom(room.id, userId);
 
       client.leave(room.id);
       client.emit('notification', {
@@ -253,12 +250,9 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
         timestamp: Date.now(),
       });
 
-      client.to(room.id).emit('newRoomMessage', {
-        text: `${client.data.user.username} left`,
-        sender: 'system',
-        messageType: MessageType.SYSTEM,
-        timestamp: Date.now(),
-      });
+      client.to(room.id).emit('newRoomMessage', leaveMessage);
+
+      this.sendRoomsToClient(client);
     } catch (error) {
       console.error(`Error leaving room: ${error.message}`);
       client.emit('notification', {
@@ -282,17 +276,13 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
       client.join(roomId);
       const messages = await this.gatewayService.getMessagesByRoom(roomId);
       client.emit('roomMessageHistory', {
-        data: {
-          roomId,
-          messages,
-        },
+        roomId,
+        messages,
       });
     } else {
       client.emit('roomMessageHistory', {
-        data: {
-          roomId,
-          messages: [],
-        },
+        roomId,
+        messages: [],
       });
       client.emit('notification', {
         data: {

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Profile, useStateContext } from "./StateProvider";
+import { Message, Profile, Room, useStateContext } from "./StateProvider";
 import { getSocket, initializeSocket, useSocketConnection, useSocketListener } from "@/network/socket";
 import { toaster } from "../ui/toaster";
 
@@ -27,6 +27,23 @@ export const SocketInit = () => {
         title: data?.text,
       });
     }
+  });
+
+  useSocketListener("roomMessageHistory", ({ roomId, messages }: { roomId: string; messages: Message[] }) => {
+    dispatch({
+      type: "UPDATE_ROOM_MESSAGES",
+      payload: {
+        roomId: roomId,
+        messages: messages || [],
+      },
+    });
+  });
+
+  useSocketListener("newRoomMessage", (data: Message) => {
+    dispatch({
+      type: "ADD_ROOM_MESSAGE",
+      payload: data,
+    });
   });
 
   return null;

@@ -5,7 +5,7 @@ import { getSocket } from "@/network/socket";
 export const RoomButton = ({ room }: { room?: Room }) => {
   const { state, dispatch } = useStateContext();
 
-  const joinRoom = async () => {
+  const switchToRoom = async () => {
     // approaches to solving this proble
     /**
      * 1. keep the state on the server so that when a user switches to a room, we fetch new messages they havane't seen
@@ -18,10 +18,12 @@ export const RoomButton = ({ room }: { room?: Room }) => {
      * Easy solution right now is to fetch top 50 anytime we switch to a room
      */
 
-    const socket = getSocket();
-    socket?.emit("switchToRoom");
-
     if (room) {
+      const socket = getSocket();
+      socket?.emit("switchToRoom", {
+        roomId: room.id,
+      });
+
       dispatch({
         type: "CHANGE_ROOM",
         payload: room,
@@ -33,7 +35,7 @@ export const RoomButton = ({ room }: { room?: Room }) => {
     <Button
       bgColor={state.activeRoom?.id === room?.id ? "green.300" : ""}
       _dark={{ bg: state.activeRoom?.id === room?.id ? "green.700" : "" }}
-      onClick={joinRoom}
+      onClick={switchToRoom}
       type="button"
       variant={"outline"}
       border="1px solid"

@@ -31,6 +31,12 @@ import { upperDirectiveTransformer } from './common/directives/upper-case.direct
       autoSchemaFile: 'schema.gql',
       transformSchema: (schema) => upperDirectiveTransformer(schema, 'upper'),
       installSubscriptionHandlers: true,
+      context: ({ req, res, connection }) => {
+        if (connection) {
+          return { req: connection.context };
+        }
+        return { req, res };
+      },
       buildSchemaOptions: {
         directives: [
           new GraphQLDirective({

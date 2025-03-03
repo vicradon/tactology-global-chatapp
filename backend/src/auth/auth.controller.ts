@@ -12,8 +12,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Response } from 'express';
-import { JWTAuthGuard } from './auth.guard';
-import { jwtConstants } from './constants';
+import { JWTAuthGuard } from './guards/auth.guard';
 import { UsersService } from 'src/users/users.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { User } from 'src/users/dto/users.dto';
@@ -25,19 +24,11 @@ export class AuthController {
     private usersService: UsersService,
   ) {}
 
-  private cookieConfig = {
-    httpOnly: true,
-    signed: true,
-    secure: true,
-    sameSite: 'none' as const,
-    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
-  };
-
   @Post('/register')
   async register(@Body() createUserDto: CreateUserDto, @Res({ passthrough: true }) response: Response) {
     const { accessToken, user } = await this.authService.register(createUserDto);
 
-    this.bakeCookie(response, accessToken);
+    this.authService.bakeCookie(response, accessToken);
 
     return {
       status: 'success',
@@ -54,7 +45,7 @@ export class AuthController {
   async signIn(@Body() signInDto: User, @Res({ passthrough: true }) response: Response) {
     const { accessToken, user } = await this.authService.signIn(signInDto.username, signInDto.password);
 
-    this.bakeCookie(response, accessToken);
+    this.authService.bakeCookie(response, accessToken);
 
     return {
       status: 'success',
@@ -64,10 +55,6 @@ export class AuthController {
         user,
       },
     };
-  }
-
-  private bakeCookie(response: Response, accessToken: string) {
-    response.cookie('accessToken', accessToken, this.cookieConfig);
   }
 
   @UseGuards(JWTAuthGuard)
@@ -88,7 +75,7 @@ export class AuthController {
       throw new NotFoundException('User not found');
     }
 
-    response.clearCookie('accessToken', this.cookieConfig);
+    this.authService.clearCookie(response);
 
     return {
       status: 'success',

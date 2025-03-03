@@ -29,7 +29,7 @@ export class User {
   password: string;
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
-  @Field(() => UserRole)
+  @Field(() => String)
   role: UserRole;
 
   @OneToMany(() => Room, (room) => room.created_by)

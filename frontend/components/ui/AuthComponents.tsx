@@ -14,6 +14,8 @@ import { useFetchMutation } from "@/network/fetch";
 import { toaster } from "@/components/ui/toaster";
 import { useStateContext } from "../state/StateProvider";
 import { disconnectSocket, getSocket } from "@/network/socket";
+import { useGraphQLMutation } from "@/network/graphql";
+import { LOGIN_MUTATION, LOGOUT_MUTATION, REGISTER_MUTATION } from "@/network/gql-queries-and-mutations";
 
 interface AuthDialogProps {
   open: boolean;
@@ -28,13 +30,13 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     password: "",
   });
 
-  const { mutate: triggerLogin, loading: isLoginLoading, error: loginError } = useFetchMutation("/auth/login");
+  const { mutate: triggerLogin, loading: isLoginLoading, error: loginError } = useGraphQLMutation(LOGIN_MUTATION);
 
   const {
     mutate: triggerRegister,
     loading: isRegisterLoading,
     error: registerError,
-  } = useFetchMutation("/auth/register");
+  } = useGraphQLMutation(REGISTER_MUTATION);
 
   if (loginError) {
     toaster.create({
@@ -66,7 +68,7 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
 
     try {
       const response = await trigger(formState);
-      const user = response?.data?.user;
+      const user = mode === "login" ? response?.login?.user : response?.register?.user;
 
       dispatch({
         type: "UPDATE_AUTH_STATE",
@@ -159,7 +161,7 @@ export function SigninButton() {
 }
 
 export const LogoutButton = () => {
-  const { mutate, loading, error } = useFetchMutation("/auth/logout");
+  const { mutate: triggerLogout, loading, error } = useGraphQLMutation(LOGOUT_MUTATION);
   const { dispatch } = useStateContext();
 
   if (error) {
@@ -171,7 +173,7 @@ export const LogoutButton = () => {
 
   const handleLogout = async () => {
     try {
-      await mutate();
+      await triggerLogout();
 
       dispatch({
         type: "RESET_STATE",

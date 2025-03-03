@@ -8,15 +8,9 @@ directive @upper on FIELD_DEFINITION
 type User {
   id: ID!
   username: String!
-  role: UserRole!
+  role: String!
   createdRooms: [Room!]
   joinedRooms: [Room!]
-}
-
-"""User role types"""
-enum UserRole {
-  SYSTEM
-  USER
 }
 
 """chat room"""
@@ -50,6 +44,7 @@ type Query {
 type Mutation {
   register(createUserInput: CreateUserDto!): AuthResponse!
   login(loginUserInput: LoginUserInput!): AuthResponse!
+  logout: Boolean!
 }
 
 input CreateUserDto {

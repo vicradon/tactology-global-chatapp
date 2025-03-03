@@ -1,18 +1,7 @@
-import {
-  Body,
-  Controller,
-  Post,
-  Get,
-  Delete,
-  Param,
-  UseGuards,
-  Request,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
+import { Body, Controller, Post, Get, Delete, Param, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
 import { RoomService } from './room.service';
 import { CreateRoomDto } from './dto/create-room.dto';
-import { JWTAuthGuard } from 'src/auth/auth.guard';
+import { JWTAuthGuard } from 'src/auth/guards/auth.guard';
 
 @Controller('rooms')
 @UseGuards(JWTAuthGuard)

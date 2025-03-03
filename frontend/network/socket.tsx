@@ -7,13 +7,23 @@ let socket: Socket | null = null;
 
 const defaultOptions = {
   reconnectionDelayMax: 10000,
-  withCredentials: true,
+  withCredentials: true, // Uses cookies if available
+  extraHeaders: {},
 };
 
 export function initializeSocket(endpoint = "", options = {}) {
   if (!socket) {
     const url = `${API_BASE_URL}${endpoint}`;
-    socket = io(url, { ...defaultOptions, ...options });
+
+    // Get accessToken from sessionStorage as a fallback
+    const accessToken = sessionStorage.getItem("accessToken");
+    const headers: Record<string, string> = {};
+
+    if (accessToken) {
+      headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    socket = io(url, { ...defaultOptions, extraHeaders: headers, ...options });
 
     socket.on("connect", () => {
       console.log("Socket connected");

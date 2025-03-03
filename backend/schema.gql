@@ -37,7 +37,7 @@ type AuthResponse {
 }
 
 type Query {
-  user(id: Int!): User!
+  user: User!
   users: [User!]!
 }
 

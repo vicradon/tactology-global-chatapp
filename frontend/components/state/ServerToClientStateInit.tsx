@@ -22,9 +22,10 @@ export const ServerToClientStateInit = ({ isAuthenticated, profile }: Props) => 
     async function fetchProfile() {
       try {
         const result = await refetch();
-        if (result?.data?.profile) {
+        const user = result?.data?.user;
+        if (user) {
           dispatch({ type: "UPDATE_AUTH_STATE", payload: true });
-          dispatch({ type: "UPDATE_PROFILE", payload: result.data.profile });
+          dispatch({ type: "UPDATE_PROFILE", payload: user });
         }
       } catch (error) {
         if (process.env.NODE_ENV === "development") {

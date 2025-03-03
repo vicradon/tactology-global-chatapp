@@ -21,10 +21,12 @@ export class AuthResolver {
 
   @UseGuards(GraphqlAuthGuard)
   @Query(() => User, { name: 'user' })
-  async getUser(@Args('id', { type: () => Int }) id: number): Promise<User> {
-    const user = await this.usersService.findById(id);
+  async getUser(@Context() context): Promise<User> {
+    const userId = context.req?.user?.sub;
+    const user = await this.usersService.findById(userId);
+
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new NotFoundException(`User with ID ${userId} not found`);
     }
     return user;
   }

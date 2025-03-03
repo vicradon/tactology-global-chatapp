@@ -72,6 +72,11 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     try {
       const response = await trigger(formState);
       const user = mode === "login" ? response?.login?.user : response?.register?.user;
+      const accessToken = mode === "login" ? response?.login?.accessToken : response?.register?.accessToken;
+
+      if (accessToken) {
+        sessionStorage.setItem("accessToken", accessToken);
+      }
 
       dispatch({
         type: "UPDATE_AUTH_STATE",

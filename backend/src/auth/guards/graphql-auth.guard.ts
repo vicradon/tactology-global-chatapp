@@ -11,7 +11,15 @@ export class GraphqlAuthGuard implements CanActivate {
     const gqlContext = GqlExecutionContext.create(context);
     const request = gqlContext.getContext().req;
 
-    const token = request.signedCookies?.accessToken;
+    let token = request.signedCookies?.accessToken;
+
+    if (!token) {
+      // fallback in case cookies are not present, but Authorization header is
+      const authHeader = request.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+    }
 
     if (!token) {
       throw new UnauthorizedException('Authentication required');

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, gql, QueryHookOptions, MutationHookOptions, DocumentNode } from "@apollo/client";
+import { useQuery, useMutation, QueryHookOptions, MutationHookOptions, DocumentNode } from "@apollo/client";
 
 export function useGraphQLQuery(query: DocumentNode, options: QueryHookOptions = {}) {
   const result = useQuery(query, options);

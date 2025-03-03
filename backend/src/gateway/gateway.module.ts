@@ -10,7 +10,6 @@ import { Room } from 'src/room/entities/room.entity';
 import { RoomService } from 'src/room/room.service';
 import { SerializationContextService } from 'src/context/serialization.context';
 import { MessageModule } from 'src/message/message.module';
-import { UsersService } from 'src/users/users.service';
 
 @Module({
   imports: [
@@ -21,12 +20,7 @@ import { UsersService } from 'src/users/users.service';
     }),
     MessageModule,
   ],
-  providers: [
-    MyGateway,
-    GatewayService,
-    RoomService,
-    SerializationContextService,
-  ],
+  providers: [MyGateway, GatewayService, RoomService, SerializationContextService],
   exports: [GatewayService],
 })
 export class GatewayModule {}

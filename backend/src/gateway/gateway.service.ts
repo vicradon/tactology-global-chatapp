@@ -170,7 +170,7 @@ export class GatewayService {
       }
     }
 
-    return Array.from(allUsers.values());
+    return Array.from(allUsers.values()).sort((a, b) => Number(b.isOnline) - Number(a.isOnline));
   }
 
   async getAvailableRooms(userId?: number) {

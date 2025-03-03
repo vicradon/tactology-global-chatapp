@@ -6,7 +6,14 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const allowedOrigins = JSON.parse(process.env.ALLOWED_ORIGINS);
+  let allowedOrigins = [];
+
+  try {
+    if (process.env.ALLOWED_ORIGINS) allowedOrigins = JSON.parse(process.env.ALLOWED_ORIGINS);
+  } catch (error) {
+    console.error('Ensure that ALLOWED_ORIGINS is a valid JSON array');
+  }
+
   app.enableCors({
     origin: (origin: string, callback: any) => {
       if (!origin || allowedOrigins.includes(origin)) {

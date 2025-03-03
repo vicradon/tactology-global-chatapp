@@ -9,8 +9,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
-import { useFetchMutation } from "@/network/fetch";
+import { useEffect, useState } from "react";
 import { toaster } from "@/components/ui/toaster";
 import { useStateContext } from "../state/StateProvider";
 import { disconnectSocket, getSocket } from "@/network/socket";
@@ -38,21 +37,25 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     error: registerError,
   } = useGraphQLMutation(REGISTER_MUTATION);
 
-  if (loginError) {
-    toaster.create({
-      type: "error",
-      title: "Login error",
-      description: loginError.message,
-    });
-  }
+  useEffect(() => {
+    if (loginError) {
+      toaster.create({
+        type: "error",
+        title: "Login error",
+        description: loginError.message,
+      });
+    }
+  }, [loginError]);
 
-  if (registerError) {
-    toaster.create({
-      type: "error",
-      title: "Register error",
-      description: registerError.message,
-    });
-  }
+  useEffect(() => {
+    if (registerError) {
+      toaster.create({
+        type: "error",
+        title: "Register error",
+        description: registerError.message,
+      });
+    }
+  }, [registerError]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

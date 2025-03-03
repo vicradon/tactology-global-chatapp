@@ -14,9 +14,7 @@ import { GatewayService } from './gateway.service';
 import { Room } from '../room/entities/room.entity';
 import * as dotenv from 'dotenv';
 import { RoomService } from 'src/room/room.service';
-import { SerializationContextService } from 'src/context/serialization.context';
 import { MessageType } from 'src/message/dto/create-message.dto';
-import { timestamp } from 'rxjs';
 dotenv.config();
 
 @UseGuards(WsAuthGuard)

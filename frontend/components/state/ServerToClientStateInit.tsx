@@ -14,7 +14,7 @@ export const ServerToClientStateInit = ({ isAuthenticated, profile }: Props) => 
   const { connected } = useSocketConnection();
 
   const { refetch } = useGraphQLQuery(PROFILE_QUERY, {
-    skip: isAuthenticated !== undefined || profile !== undefined,
+    skip: isAuthenticated !== undefined && profile !== undefined,
   });
 
   useEffect(() => {
@@ -26,7 +26,11 @@ export const ServerToClientStateInit = ({ isAuthenticated, profile }: Props) => 
           dispatch({ type: "UPDATE_AUTH_STATE", payload: true });
           dispatch({ type: "UPDATE_PROFILE", payload: result.data.profile });
         }
-      } catch (error) {}
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Error fetching profile:", error);
+        }
+      }
     }
 
     if (isAuthenticated === undefined && profile === undefined) {

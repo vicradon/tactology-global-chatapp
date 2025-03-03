@@ -6,7 +6,7 @@ import { Socket } from 'socket.io';
 import { RoomService } from 'src/room/room.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { JwtService } from '@nestjs/jwt';
-import { jwtConstants } from 'src/auth/constants';
+import { cookieConstants, jwtConstants } from 'src/auth/constants';
 import { unsign } from 'cookie-signature';
 import { Message } from 'src/message/entities/message.entity';
 import { CreateMessageDto } from 'src/message/dto/create-message.dto';
@@ -182,8 +182,11 @@ export class GatewayService {
       try {
         const cookieString = socket.handshake.headers.cookie || '';
         const cookies = this.parseCookies(cookieString);
+        const accessTokenCookieName = cookieConstants.COOKIE_NAMES.ACCESS_TOKEN;
 
-        const signedCookie = cookies?.['accessToken'] ? decodeURIComponent(cookies?.['accessToken']) : undefined;
+        const signedCookie = cookies?.[accessTokenCookieName]
+          ? decodeURIComponent(cookies?.[accessTokenCookieName])
+          : undefined;
 
         let token;
 

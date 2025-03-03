@@ -5,7 +5,7 @@ import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { User } from 'src/users/entities/user.entity';
 import { Response } from 'express';
-import { jwtConstants } from './constants';
+import { cookieConstants, jwtConstants } from './constants';
 
 @Injectable()
 export class AuthService {
@@ -13,6 +13,14 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
   ) {}
+
+  cookieConfig = {
+    httpOnly: true,
+    signed: true,
+    secure: true,
+    sameSite: 'none' as const,
+    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+  };
 
   async register(createUserDto: CreateUserDto): Promise<{ accessToken: string; user: User }> {
     const existingUser = await this.usersService.findOne(createUserDto.username);
@@ -54,24 +62,12 @@ export class AuthService {
     };
   }
 
-  cookieConfig = {
-    httpOnly: true,
-    signed: true,
-    secure: true,
-    sameSite: 'none' as const,
-    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
-  };
-
-  COOKIE_NAMES: {
-    ACCESS_TOKEN: 'accessToken';
-  };
-
   bakeCookie(response: Response, accessToken: string) {
-    response.cookie(this.COOKIE_NAMES.ACCESS_TOKEN, accessToken, this.cookieConfig);
+    response.cookie(cookieConstants.COOKIE_NAMES.ACCESS_TOKEN, accessToken, this.cookieConfig);
   }
 
   clearCookie(response: Response) {
-    response.clearCookie(this.COOKIE_NAMES.ACCESS_TOKEN, this.cookieConfig);
+    response.clearCookie(cookieConstants.COOKIE_NAMES.ACCESS_TOKEN, this.cookieConfig);
   }
 
   async systemSignIn(username: string, pass: string, systemKey: string): Promise<{ accessToken: string }> {

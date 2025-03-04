@@ -122,15 +122,13 @@ export const StateProvider = ({ children }: Props) => {
       case "ADD_ROOM_MESSAGE":
         if (action.payload.room) {
           const roomId = action.payload.room.id;
-          const roomMessages = state.roomMessages?.[roomId];
-          roomMessages?.push(action.payload);
 
-          if (roomId && roomMessages) {
+          if (roomId) {
             return {
               ...state,
               roomMessages: {
                 ...state.roomMessages,
-                [roomId]: roomMessages,
+                [roomId]: [...(state.roomMessages?.[roomId] || []), action.payload],
               },
             };
           }

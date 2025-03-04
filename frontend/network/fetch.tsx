@@ -43,7 +43,7 @@ export function useFetchQuery(endpoint: string, options: FetchOptions = {}) {
     return () => {
       isMounted = false;
     };
-  }, [url]);
+  }, [url, options]);
 
   return { data, loading, error };
 }

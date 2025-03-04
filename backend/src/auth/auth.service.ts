@@ -15,12 +15,13 @@ export class AuthService {
   ) {}
 
   cookieConfig = {
-    httpOnly: true,
-    signed: true,
-    secure: true,
-    sameSite: 'none' as const,
-    maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
-  };
+  httpOnly: true,
+  signed: true,
+  secure: true,
+  sameSite: 'none' as const,
+  maxAge: jwtConstants.CREDENTIALS_MAX_AGE_IN_SECONDS * 1000,
+  domain: new URL(process.env.API_BASE_URL).hostname,
+};
 
   async register(createUserDto: CreateUserDto): Promise<{ accessToken: string; user: User }> {
     const existingUser = await this.usersService.findOne(createUserDto.username);

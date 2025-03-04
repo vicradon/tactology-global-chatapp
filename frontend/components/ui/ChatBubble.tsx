@@ -33,7 +33,7 @@ export const ChatBubble = ({ message }: Props) => {
         <Text mb={2}>{message.text}</Text>
         <Flex justify="flex-end">
           <Text fontSize="xs" color="gray.500">
-            {new Date(message.timestamp).toLocaleTimeString()}
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </Text>
         </Flex>
       </Box>

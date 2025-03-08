@@ -77,6 +77,7 @@ export class GatewayService {
           id: roomId,
         },
       },
+      order: { timestamp: "DESC" },
       take: limit,
       relations: ['sender'],
       select: {

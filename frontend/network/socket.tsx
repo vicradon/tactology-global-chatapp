@@ -32,6 +32,15 @@ export function initializeSocket(endpoint = "", options = {}) {
     socket.on("disconnect", () => {
       console.log("Socket disconnected");
     });
+
+    socket.on("connect_error", (error) => {
+      console.log("Socket connection error:", error);
+
+      if (socket) {
+        socket.io.opts.transports = ["polling", "websocket"];
+        socket.connect();
+      }
+    });
   }
 
   return socket;

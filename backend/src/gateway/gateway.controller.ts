@@ -99,6 +99,7 @@ export class MyGateway implements OnModuleInit, OnGatewayDisconnect {
   async onRoomMessageHistory(@ConnectedSocket() client: Socket, @MessageBody() data: { roomId: string }) {
     try {
       const messages = await this.gatewayService.getMessagesByRoom(data.roomId, 50);
+      console.log(messages)
       client.emit('roomMessageHistory', {
         roomId: data.roomId,
         messages: messages.map((msg) => ({ ...msg, sender: msg.sender.username })),

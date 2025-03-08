@@ -71,13 +71,13 @@ export class GatewayService {
   }
 
   async getMessagesByRoom(roomId: string, limit: number = 50): Promise<Message[]> {
-    return this.messageRepository.find({
+    const messages = await this.messageRepository.find({
       where: {
         room: {
           id: roomId,
         },
       },
-      order: { timestamp: "DESC" },
+      order: { timestamp: 'DESC' },
       take: limit,
       relations: ['sender'],
       select: {
@@ -91,6 +91,8 @@ export class GatewayService {
         },
       },
     });
+
+    return messages.reverse();
   }
 
   removeUserAccount(user: CreateUserDto) {

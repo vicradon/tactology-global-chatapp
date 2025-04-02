@@ -1,8 +1,8 @@
-# Tactology Global Full-Stack Engineer Assessment
+# DaChatApp
 
-Assessment for the full-stack engineer role at Tactology Global. It consists of frontend and backend components of a chat application.
+This is a fullstack chat app built using Next.js and Nest.js (feels like a cool combo). It uses websockets for real-time updates and GraphQL for data fetching. 
 
-Deployed Frontend: https://dachatapp.vercel.app/
+Deployed Frontend: https://dachatapp.vercel.app/ \
 Deployed Backend: https://dachatapp.onrender.com
 
 ## Events

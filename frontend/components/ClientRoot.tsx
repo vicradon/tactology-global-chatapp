@@ -13,6 +13,7 @@ import { SocketInit } from "./state/SocketInit";
 interface Props {
   isAuthenticated: boolean | undefined;
   profile: Profile | undefined;
+  apiBaseURL: string;
 }
 
 export const ClientRoot = ({ ...props }: Props) => {

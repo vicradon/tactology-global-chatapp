@@ -7,15 +7,22 @@ import { PROFILE_QUERY } from "@/network/gql-queries-and-mutations";
 interface Props {
   isAuthenticated: boolean | undefined;
   profile: Profile | undefined;
+  apiBaseURL: string;
 }
 
-export const ServerToClientStateInit = ({ isAuthenticated, profile }: Props) => {
+export const ServerToClientStateInit = ({ isAuthenticated, profile, apiBaseURL }: Props) => {
   const { dispatch } = useStateContext();
   const { connected } = useSocketConnection();
 
   const { refetch } = useGraphQLQuery(PROFILE_QUERY, {
     skip: isAuthenticated !== undefined && profile !== undefined,
   });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("API_BASE_URL", apiBaseURL);
+    }
+  }, []);
 
   useEffect(() => {
     // client side auth check fallback - nextjs server, for some reason, isn't getting the cookies on environments other than local

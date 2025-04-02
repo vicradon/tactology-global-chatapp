@@ -1,7 +1,8 @@
 import { io, Socket } from "socket.io-client";
 import { useEffect, useState } from "react";
+import getAPIBaseURL from "./getAPIBase";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+const API_BASE_URL = getAPIBaseURL();
 
 let socket: Socket | null = null;
 

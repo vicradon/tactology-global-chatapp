@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import getAPIBaseURL from "./getAPIBase";
 
 interface FetchOptions extends RequestInit {
   headers?: HeadersInit;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+const API_BASE_URL = getAPIBaseURL();
 
 export function useFetchQuery(endpoint: string, options: FetchOptions = {}) {
   const [data, setData] = useState<any>(null);

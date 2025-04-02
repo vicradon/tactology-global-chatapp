@@ -1,8 +1,11 @@
+import getAPIBaseURL from "@/network/getAPIBase";
 import { ApolloClient, InMemoryCache, createHttpLink } from "@apollo/client";
 import { setContext } from "@apollo/client/link/context";
 
+const API_BASE_URL = getAPIBaseURL();
+
 const httpLink = createHttpLink({
-  uri: `${process.env.NEXT_PUBLIC_API_BASE_URL}/graphql`,
+  uri: `${API_BASE_URL}/graphql`,
   credentials: "include",
 });
 

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { ClientRoot } from "@/components/ClientRoot";
 import { Profile } from "@/components/state/StateProvider";
+import { connection } from "next/server";
 
 export default async function Home() {
   const cookieStore = await cookies();
@@ -9,7 +10,8 @@ export default async function Home() {
   let isAuthenticated: boolean | undefined = undefined;
   let profile: Profile | undefined = undefined;
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+  await connection();
+  const API_BASE_URL = process.env.API_BASE_URL;
 
   try {
     const res = await fetch(`${API_BASE_URL}/auth/profile`, {
@@ -28,7 +30,7 @@ export default async function Home() {
   return (
     <div>
       <main>
-        <ClientRoot profile={profile} isAuthenticated={isAuthenticated} />
+        <ClientRoot profile={profile} isAuthenticated={isAuthenticated} apiBaseURL={API_BASE_URL || ""} />
       </main>
     </div>
   );
